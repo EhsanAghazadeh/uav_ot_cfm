@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fair_comparison import save_trajectory_npz
 from latent_trajectory import radial_trajectory, sample_uniform_annulus
 from ot_cfm import (VelocityNet, build_model, cfm_loss, transport,
-                    transport_train, nfz_penalty)
+                    transport_train, nfz_penalty, energy_penalty)
 
 
 def make_grid_sampler(grid_path, smooth_sigma, eps_floor,
@@ -61,7 +61,9 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
               n_layers, delta, seed, arch="v1", n_time_freqs=16,
               nfz_center=None, nfz_radius=None, nfz_margin=0.05,
               nfz_lambda=0.0, nfz_steps=8, nfz_reject_targets=False,
-              device="cpu"):
+              energy_lambda=0.0, energy_chunk_size=64, energy_steps=8,
+              energy_n_cycles=50, energy_pts_per_cycle=200,
+              domain_size=8.0, device="cpu"):
     torch.manual_seed(seed)
     model = build_model(arch=arch, hidden_dim=hidden_dim, n_layers=n_layers,
                         n_time_freqs=n_time_freqs).to(device)
@@ -75,6 +77,25 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
         print(f"  NFZ on: c=({nfz_c[0]:.3f},{nfz_c[1]:.3f})  r={nfz_radius:.3f}"
               f"  margin={nfz_margin:.3f}  lambda={nfz_lambda:.3f}  "
               f"steps={nfz_steps}  reject_targets={nfz_reject_targets}")
+
+    energy_on = energy_lambda > 0.0
+    if energy_on:
+        pos_lat_full, t_lat_full, _ = radial_trajectory(
+            n_cycles=energy_n_cycles, points_per_cycle=energy_pts_per_cycle,
+            delta=delta, seed=seed + 7)
+        pos_lat_full_t = torch.as_tensor(
+            pos_lat_full, dtype=torch.float32, device=device)
+        n_lat_full = pos_lat_full_t.shape[0]
+        dt_s = float(t_lat_full[1] - t_lat_full[0])
+        eng_rng = np.random.default_rng(seed + 8)
+        max_start = n_lat_full - energy_chunk_size - 1
+        if max_start <= 0:
+            raise ValueError(
+                f"energy_chunk_size={energy_chunk_size} too large for"
+                f" radial trajectory of length {n_lat_full}")
+        print(f"  Energy on: lambda={energy_lambda:.4g}  chunk={energy_chunk_size}"
+              f"  steps={energy_steps}  dt_s={dt_s:.5g}  "
+              f"domain_size={domain_size}")
 
     def _resample_outside_nfz(x, c, r, sampler, base_seed):
         """Replace any x_i inside disc B(c, r) with fresh samples."""
@@ -90,7 +111,7 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
             x[mask] = fresh
             retries += 1
 
-    losses, cfm_log, nfz_log = [], [], []
+    losses, cfm_log, nfz_log, energy_log = [], [], [], []
     for ep in range(n_epochs):
         model.train()
         z0 = sample_uniform_annulus(batch_size, delta=delta,
@@ -105,12 +126,21 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
         loss_cfm = cfm_loss(model, z0, x1, device=device)
         loss = loss_cfm
         pen_val = 0.0
+        eng_val = 0.0
         if nfz_on:
             z0_t = torch.as_tensor(z0, dtype=torch.float32, device=device)
             yT = transport_train(model, z0_t, n_steps=nfz_steps)
             pen = nfz_penalty(yT, nfz_c, float(nfz_radius), float(nfz_margin))
-            loss = loss_cfm + float(nfz_lambda) * pen
+            loss = loss + float(nfz_lambda) * pen
             pen_val = float(pen.item())
+
+        if energy_on:
+            start = int(eng_rng.integers(0, max_start))
+            chunk = pos_lat_full_t[start : start + energy_chunk_size + 1]
+            yE = transport_train(model, chunk, n_steps=energy_steps)
+            pen_E = energy_penalty(yE, dt_s, domain_size=domain_size)
+            loss = loss + float(energy_lambda) * pen_E
+            eng_val = float(pen_E.item())
 
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -118,9 +148,13 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
         losses.append(loss.item())
         cfm_log.append(float(loss_cfm.item()))
         nfz_log.append(pen_val)
+        energy_log.append(eng_val)
         if (ep + 1) % 100 == 0:
-            extra = (f"  cfm={cfm_log[-1]:.5f}  nfz_pen={nfz_log[-1]:.5f}"
-                     if nfz_on else "")
+            extra = ""
+            if nfz_on:
+                extra += f"  cfm={cfm_log[-1]:.5f}  nfz_pen={nfz_log[-1]:.5f}"
+            if energy_on:
+                extra += f"  energy_W={energy_log[-1]:.2f}"
             print(f"  epoch {ep+1}/{n_epochs}  loss={loss.item():.6f}{extra}")
     return model, losses
 
@@ -157,6 +191,21 @@ def main():
                   help="RK4 steps for in-training transport (default 8).")
     p.add_argument("--nfz-reject-targets", action="store_true",
                   help="Reject target samples that fall inside NFZ during training.")
+    p.add_argument("--energy-lambda", type=float, default=0.0,
+                  help="Weight of mean Zeng-power penalty (0 = off).")
+    p.add_argument("--energy-chunk-size", type=int, default=64,
+                  help="Consecutive latent points used per step for the "
+                       "energy chunk (longer = lower-variance speed estimate).")
+    p.add_argument("--energy-steps", type=int, default=8,
+                  help="RK4 steps for the differentiable energy transport.")
+    p.add_argument("--energy-n-cycles", type=int, default=50,
+                  help="Cycles in the radial trajectory pre-built for "
+                       "energy chunks.")
+    p.add_argument("--energy-pts-per-cycle", type=int, default=200,
+                  help="Points per cycle in the energy radial trajectory.")
+    p.add_argument("--domain-size", type=float, default=8.0,
+                  help="Physical extent of the unit interval in metres "
+                       "(matches RotaryWingEnergyModel default).")
     p.add_argument("--reuse-model-from", default=None,
                   help="Load checkpoint if it exists; else train and save")
     p.add_argument("--force-retrain", action="store_true")
@@ -196,6 +245,12 @@ def main():
             nfz_margin=args.nfz_margin, nfz_lambda=args.nfz_lambda,
             nfz_steps=args.nfz_steps,
             nfz_reject_targets=args.nfz_reject_targets,
+            energy_lambda=args.energy_lambda,
+            energy_chunk_size=args.energy_chunk_size,
+            energy_steps=args.energy_steps,
+            energy_n_cycles=args.energy_n_cycles,
+            energy_pts_per_cycle=args.energy_pts_per_cycle,
+            domain_size=args.domain_size,
             device=device)
         train_s = time.perf_counter() - t0
         print(f"train wall t : {train_s:.1f}s")
@@ -253,6 +308,12 @@ def main():
         "nfz_lambda": float(args.nfz_lambda),
         "nfz_steps": int(args.nfz_steps),
         "nfz_reject_targets": bool(args.nfz_reject_targets),
+        "energy_lambda": float(args.energy_lambda),
+        "energy_chunk_size": int(args.energy_chunk_size),
+        "energy_steps": int(args.energy_steps),
+        "energy_n_cycles": int(args.energy_n_cycles),
+        "energy_pts_per_cycle": int(args.energy_pts_per_cycle),
+        "domain_size": float(args.domain_size),
         "train_wall_clock_s": float(train_s),
         "latent_gen_wall_clock_s": float(latent_s),
         "transport_wall_clock_s": float(transport_s),

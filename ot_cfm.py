@@ -214,6 +214,50 @@ def nfz_penalty(pts: torch.Tensor, center, radius: float,
     return torch.clamp(radius + margin - dist, min=0).pow(2).mean()
 
 
+def power_zeng(v: torch.Tensor, P_0: float = 79.86, P_i: float = 88.63,
+               U_tip: float = 120.0, v_0: float = 4.03, d_0: float = 0.6,
+               rho_air: float = 1.225, s: float = 0.05,
+               A: float = 0.503) -> torch.Tensor:
+    """Differentiable Zeng-2019 rotary-wing power curve P(V) [Watts].
+
+    Mirror of `RotaryWingEnergyModel.power` in milano_baselines.py, but
+    written in torch so autograd can backprop through it.
+
+    Args:
+        v: (N,) tensor of speeds in m/s.
+    Returns:
+        (N,) tensor of instantaneous power in Watts.
+    """
+    v = torch.clamp(v, min=0.01)
+    P_blade = P_0 * (1.0 + 3.0 * v.pow(2) / (U_tip ** 2))
+    ratio = v.pow(2) / (2.0 * v_0 ** 2)
+    induced = torch.sqrt(
+        torch.clamp(1.0 + v.pow(4) / (4.0 * v_0 ** 4) - ratio, min=0.01))
+    P_induced = P_i * induced
+    P_par = 0.5 * d_0 * rho_air * s * A * v.pow(3)
+    return P_blade + P_induced + P_par
+
+
+def energy_penalty(traj_phys: torch.Tensor, dt_s: float,
+                   domain_size: float = 8.0) -> torch.Tensor:
+    """Mean Zeng power along a transported chunk (Watts).
+
+    Treats the chunk as time-ordered. Step displacement in normalised
+    coordinates is converted to metres via `domain_size`, then divided by
+    `dt_s` to get speed in m/s.
+
+    Args:
+        traj_phys: (T, 2) transported chunk in normalised [-1, 1].
+        dt_s: scalar — physical seconds between consecutive samples.
+        domain_size: physical extent of the unit interval (default 8 m).
+    Returns:
+        Scalar mean power (mean over T-1 segments).
+    """
+    step_m = torch.linalg.norm(torch.diff(traj_phys, dim=0), dim=1) * domain_size
+    v_mps = step_m / dt_s
+    return power_zeng(v_mps).mean()
+
+
 def transport_train(model: nn.Module, z0: torch.Tensor,
                     n_steps: int = 8) -> torch.Tensor:
     """Differentiable RK4 transport used during training for endpoint
