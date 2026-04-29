@@ -91,7 +91,22 @@ def main():
     p.add_argument("--cmap", default="viridis",
                   help="Colormap for the particle density panels.")
     p.add_argument("--show-target", action="store_true", default=True,
-                  help="Overlay faint Milano density contour on each panel.")
+                  help="Overlay Milano density contour on each panel.")
+    p.add_argument("--contour-color", default="#ff6a00",
+                  help="Color of the Milano density contour overlay "
+                       "(default warm-orange, visible on viridis).")
+    p.add_argument("--contour-alpha", type=float, default=0.85,
+                  help="Opacity of the Milano contour lines (default 0.85).")
+    p.add_argument("--contour-lw", type=float, default=0.9,
+                  help="Linewidth of the Milano contour lines.")
+    p.add_argument("--nfz-center", nargs=2, type=float, default=None,
+                  metavar=("CX", "CY"),
+                  help="No-fly disc centre (normalised). Draws a red circle "
+                       "on every panel if set.")
+    p.add_argument("--nfz-radius", type=float, default=None,
+                  help="No-fly disc radius (normalised).")
+    p.add_argument("--nfz-color", default="#ff2a2a",
+                  help="No-fly-zone overlay color (default bright red).")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out", required=True)
     args = p.parse_args()
@@ -162,7 +177,15 @@ def main():
 
         if args.show_target:
             ax.contour(TX, TY, target, levels=target_levels,
-                      colors="white", alpha=0.35, linewidths=0.6)
+                      colors=args.contour_color, alpha=args.contour_alpha,
+                      linewidths=args.contour_lw)
+
+        if args.nfz_center is not None and args.nfz_radius is not None:
+            disc = plt.Circle(tuple(args.nfz_center), args.nfz_radius,
+                              facecolor=args.nfz_color, alpha=0.18,
+                              edgecolor=args.nfz_color, linewidth=1.4,
+                              linestyle="--", zorder=5)
+            ax.add_patch(disc)
 
         ax.set_xlim(xlim); ax.set_ylim(ylim)
         ax.set_xticks([]); ax.set_yticks([])
