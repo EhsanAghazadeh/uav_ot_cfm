@@ -60,10 +60,11 @@ def make_grid_sampler(grid_path, smooth_sigma, eps_floor,
 def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
               n_layers, delta, seed, arch="v1", n_time_freqs=16,
               nfz_center=None, nfz_radius=None, nfz_margin=0.05,
-              nfz_lambda=0.0, nfz_steps=8, nfz_reject_targets=False):
+              nfz_lambda=0.0, nfz_steps=8, nfz_reject_targets=False,
+              device="cpu"):
     torch.manual_seed(seed)
     model = build_model(arch=arch, hidden_dim=hidden_dim, n_layers=n_layers,
-                        n_time_freqs=n_time_freqs)
+                        n_time_freqs=n_time_freqs).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, n_epochs)
 
@@ -101,11 +102,11 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
                 x1, nfz_c, float(nfz_radius), sample_target,
                 base_seed=ep * 1000 + seed + 1)
 
-        loss_cfm = cfm_loss(model, z0, x1)
+        loss_cfm = cfm_loss(model, z0, x1, device=device)
         loss = loss_cfm
         pen_val = 0.0
         if nfz_on:
-            z0_t = torch.as_tensor(z0, dtype=torch.float32)
+            z0_t = torch.as_tensor(z0, dtype=torch.float32, device=device)
             yT = transport_train(model, z0_t, n_steps=nfz_steps)
             pen = nfz_penalty(yT, nfz_c, float(nfz_radius), float(nfz_margin))
             loss = loss_cfm + float(nfz_lambda) * pen
@@ -166,6 +167,10 @@ def main():
     sample_target = make_grid_sampler(args.milano_grid, args.smooth_sigma,
                                       args.eps_floor)
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"device: {device}"
+          + (f"  ({torch.cuda.get_device_name(0)})" if device == "cuda" else ""))
+
     cache = args.reuse_model_from
     cache_hit = (cache is not None and os.path.isfile(cache)
                  and not args.force_retrain)
@@ -175,8 +180,8 @@ def main():
         print(f"loading cached model from {cache}  (arch={args.arch})")
         model = build_model(arch=args.arch, hidden_dim=args.hidden_dim,
                             n_layers=args.n_layers,
-                            n_time_freqs=args.n_time_freqs)
-        model.load_state_dict(torch.load(cache, map_location="cpu"))
+                            n_time_freqs=args.n_time_freqs).to(device)
+        model.load_state_dict(torch.load(cache, map_location=device))
         model.eval()
     else:
         print(f"training OT-CFM: arch={args.arch} epochs={args.epochs} "
@@ -190,7 +195,8 @@ def main():
             nfz_center=args.nfz_center, nfz_radius=args.nfz_radius,
             nfz_margin=args.nfz_margin, nfz_lambda=args.nfz_lambda,
             nfz_steps=args.nfz_steps,
-            nfz_reject_targets=args.nfz_reject_targets)
+            nfz_reject_targets=args.nfz_reject_targets,
+            device=device)
         train_s = time.perf_counter() - t0
         print(f"train wall t : {train_s:.1f}s")
         if cache is not None:
@@ -214,7 +220,8 @@ def main():
 
     print(f"transporting {len(pos_lat)} points (RK4 steps={args.transport_steps}) ...")
     t0 = time.perf_counter()
-    pos_phys = transport(model, pos_lat, n_steps=args.transport_steps)
+    pos_phys = transport(model, pos_lat, n_steps=args.transport_steps,
+                         device=device)
     transport_s = time.perf_counter() - t0
     print(f"  transport wall t : {transport_s:.2f}s")
 

@@ -3,11 +3,12 @@
 #SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%j_otcfm_nfz_train.out
 #SBATCH --error=./slurm_output/%j_otcfm_nfz_train.err
-#SBATCH --partition=cpu
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64GB
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32GB
 #SBATCH --time=02:00:00
 #SBATCH --array=0-2
 

@@ -31,7 +31,7 @@ from ot_cfm import build_model
 
 
 @torch.no_grad()
-def transport_with_snapshots(model, z0, n_steps, n_frames):
+def transport_with_snapshots(model, z0, n_steps, n_frames, device="cpu"):
     """RK4 transport saving (n_frames) snapshots at evenly-spaced s ∈ [0, 1].
 
     Always includes s=0 and s=1. n_steps must be ≥ n_frames - 1.
@@ -40,7 +40,7 @@ def transport_with_snapshots(model, z0, n_steps, n_frames):
     if n_steps < n_frames - 1:
         n_steps = n_frames - 1
 
-    y = torch.as_tensor(z0, dtype=torch.float32)
+    y = torch.as_tensor(z0, dtype=torch.float32, device=device)
     dt = 1.0 / n_steps
     N = y.shape[0]
 
@@ -51,9 +51,9 @@ def transport_with_snapshots(model, z0, n_steps, n_frames):
 
     for i in range(n_steps):
         s_i = i * dt
-        s1 = torch.full((N,), s_i)
-        s2 = torch.full((N,), s_i + 0.5 * dt)
-        s3 = torch.full((N,), s_i + dt)
+        s1 = torch.full((N,), s_i, device=device)
+        s2 = torch.full((N,), s_i + 0.5 * dt, device=device)
+        s3 = torch.full((N,), s_i + dt, device=device)
         k1 = model(s1, y)
         k2 = model(s2, y + 0.5 * dt * k1)
         k3 = model(s2, y + 0.5 * dt * k2)
@@ -106,13 +106,14 @@ def main():
     n_time_freqs = int(meta.get("n_time_freqs", 16))
     delta = float(meta.get("delta", 0.05))
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = build_model(arch=arch, hidden_dim=hidden_dim, n_layers=n_layers,
-                       n_time_freqs=n_time_freqs)
+                       n_time_freqs=n_time_freqs).to(device)
     sd = torch.load(os.path.join(args.model_dir, "model.pt"),
-                    map_location="cpu")
+                    map_location=device)
     model.load_state_dict(sd)
     model.eval()
-    print(f"loaded {args.model_dir}/model.pt  arch={arch}  hidden={hidden_dim}  layers={n_layers}")
+    print(f"loaded {args.model_dir}/model.pt  arch={arch}  hidden={hidden_dim}  layers={n_layers}  device={device}")
 
     # ---- Latent samples ----
     if args.source == "radial":
@@ -126,7 +127,7 @@ def main():
 
     # ---- Integrate with snapshots ----
     snaps, s_vals = transport_with_snapshots(
-        model, z0, args.n_steps, args.n_frames)
+        model, z0, args.n_steps, args.n_frames, device=device)
     print(f"snapshots: {len(snaps)}  s={np.round(s_vals, 3).tolist()}")
 
     # ---- Target for overlay ----
