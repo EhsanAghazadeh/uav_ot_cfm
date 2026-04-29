@@ -4,6 +4,47 @@ End-to-end pipeline for comparing **OT-CFM** against four baselines (TOES,
 NonUniformErg, OptTransport, SAC) on the Milano cellular-density target,
 including an NFZ-aware OT-CFM variant.
 
+## Server / SLURM (multi-seed sweep)
+
+Scripts under `scripts/` run the full multi-seed sweep on a SLURM cluster
+(seeds 21, 42, 63 via `--array=0-2`). Repo root on server:
+`/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm`.
+
+### One-time install (head/login node)
+
+```bash
+cd /work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
+module avail python                           # find available python module
+# edit scripts/install_env.sh if your version differs from python/3.11.7
+bash scripts/install_env.sh
+```
+
+This loads python, creates `.venv`, installs `requirements.txt`, and pip-installs
+the TOES upstream submodule in editable mode.
+
+### Submit jobs
+
+```bash
+sbatch scripts/run_toes.sh             # 24h × 3 seeds
+sbatch scripts/run_nonuniform_erg.sh   # 1h × 3 seeds
+sbatch scripts/run_opt_transport.sh    # 1h × 3 seeds
+sbatch scripts/run_sac.sh              # 8h × 3 seeds
+sbatch scripts/run_otcfm.sh            # 6h × 3 seeds (vanilla v2)
+sbatch scripts/run_otcfm_nfz.sh        # 8h × 3 seeds (NFZ-aware)
+```
+
+After all training jobs finish:
+
+```bash
+sbatch scripts/run_eval_all.sh         # prefix-stop, NFZ table, plots
+```
+
+Outputs land in `results/<method>_seed<S>/` and aggregated comparison plots
+in `results/comparison_seed<S>/`. Each script writes its `slurm_output/*.out`
+log under `slurm_output/`.
+
+---
+
 ## Quickstart
 
 ```bash
