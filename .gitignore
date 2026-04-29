@@ -1,0 +1,15 @@
+# venv & build artefacts
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.ipynb_checkpoints/
+
+# experiment outputs (rebuilt by running the pipeline)
+results/
+
+# macOS / editor cruft
+.DS_Store
+.idea/
+.vscode/

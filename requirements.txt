@@ -1,0 +1,17 @@
+# core numerics
+numpy>=1.26,<3
+scipy>=1.11
+matplotlib>=3.8
+
+# OT-CFM model + Sinkhorn coupling
+torch>=2.2
+POT>=0.9              # provides `import ot`
+
+# TOES baseline (upstream package — see time_optimal_ergodic_search/)
+jax>=0.4.20
+jaxlib>=0.4.20
+PyYAML>=6.0
+
+# SAC baseline
+gymnasium>=1.0
+stable-baselines3>=2.5
