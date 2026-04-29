@@ -145,7 +145,7 @@ class MilanoRateMap:
     def rate_cartesian(self, x, y):
         if x * x + y * y > self.rho * self.rho:
             return 0.0
-        return float(self._interp([y, x]))
+        return float(np.asarray(self._interp([[y, x]])).reshape(-1)[0])
 
     def rate(self, r, theta):
         if r > self.rho or r < self.delta:
