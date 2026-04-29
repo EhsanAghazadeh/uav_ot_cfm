@@ -1,14 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=otcfm_toes
+#SBATCH --job-name=toes_method
 #SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
-#SBATCH --output=./slurm_output/%x_%A_%a.out
-#SBATCH --error=./slurm_output/%x_%A_%a.err
+#SBATCH --output=./slurm_output/%j_toes_method.out
+#SBATCH --error=./slurm_output/%j_toes_method.err
 #SBATCH --partition=cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64GB
-#SBATCH --time=24:00:00
+#SBATCH --time=4:00:00
 #SBATCH --array=0-2
 
 set -euo pipefail

@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=otcfm_nuerg
+#SBATCH --job-name=nonuniform_erg_method
 #SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
-#SBATCH --output=./slurm_output/%x_%A_%a.out
-#SBATCH --error=./slurm_output/%x_%A_%a.err
+#SBATCH --output=./slurm_output/%j_nonuniform_erg.out
+#SBATCH --error=./slurm_output/%j_nonuniform_erg.err
 #SBATCH --partition=cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
