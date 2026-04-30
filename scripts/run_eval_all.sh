@@ -21,7 +21,7 @@ module purge
 module load python/3.11.7
 source .venv/bin/activate
 
-METHODS=(toes nonuniform_erg opt_transport sac otcfm otcfm_nfz)
+METHODS=(toes nonuniform_erg opt_transport sac otcfm otcfm_nfz otcfm_energy otcfm_energy_nfz)
 SEEDS=(21 42 63)
 
 # 1. prefix-stop curves
@@ -77,5 +77,24 @@ for s in "${SEEDS[@]}"; do
         --suptitle "Milano (seed=${s}) — NFZ disc highlighted" \
         --out results/comparison_seed${s}/trajectories_all_nfz.png
 done
+
+# 5. Fair-comparison metrics (native trajectories, no resampling).
+#    Aggregates all (method, seed) into one table + LaTeX + Pareto plots.
+FAIR_ARGS=""
+for m in "${METHODS[@]}"; do
+    for s in "${SEEDS[@]}"; do
+        T=results/${m}_seed${s}/trajectory.npz
+        [ -f "$T" ] && FAIR_ARGS="$FAIR_ARGS --traj ${m}:${T}"
+    done
+done
+if [ -n "$FAIR_ARGS" ]; then
+    python eval_fair.py $FAIR_ARGS \
+        --milano-grid data/milano_grid_corrected.npy \
+        --nfz-center 0.19 0.03 --nfz-radius 0.10 \
+        --out-dir results/fair_metrics
+    python plot_pareto.py \
+        --per-run results/fair_metrics/per_run.json \
+        --out-dir results/fair_metrics
+fi
 
 echo "all-method evaluation complete"
