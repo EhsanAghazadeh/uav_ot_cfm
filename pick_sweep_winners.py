@@ -173,18 +173,31 @@ def run_eval_fair(traj_args, milano_grid, nfz_center, nfz_radius,
 
 
 def rank(values, mode):
-    """Return 1-based ranks of `values`. mode='min': smaller = rank 1."""
+    """Return 1-based fractional ranks of `values`.
+
+    mode='min': smaller = rank 1.  Ties share the average of their slot
+    indices (e.g., three values all = 0 occupying slots 1..3 each get
+    rank 2.0).  Non-finite values are pushed to the worst slot.
+    """
     arr = np.asarray(values, dtype=float)
-    finite = np.isfinite(arr)
-    order = np.argsort(arr if mode == "min" else -arr)
-    ranks = np.empty_like(arr)
-    r = 1
-    for idx in order:
-        if not finite[idx]:
-            ranks[idx] = len(arr)  # bad runs get worst rank
-        else:
-            ranks[idx] = r
-            r += 1
+    n = len(arr)
+    work = arr.copy()
+    if mode == "max":
+        work = -work
+    work = np.where(np.isfinite(work), work, np.inf)  # bad → worst
+    order = np.argsort(work, kind="stable")
+    sorted_vals = work[order]
+    sorted_ranks = np.empty(n, dtype=float)
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and sorted_vals[j + 1] == sorted_vals[i]:
+            j += 1
+        avg = (i + j) / 2.0 + 1.0  # 1-based average
+        sorted_ranks[i : j + 1] = avg
+        i = j + 1
+    ranks = np.empty(n, dtype=float)
+    ranks[order] = sorted_ranks
     return ranks
 
 
