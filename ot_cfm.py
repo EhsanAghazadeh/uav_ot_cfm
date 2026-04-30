@@ -258,6 +258,28 @@ def energy_penalty(traj_phys: torch.Tensor, dt_s: float,
     return power_zeng(v_mps).mean()
 
 
+def acceleration_penalty(traj_phys: torch.Tensor, dt_s: float,
+                         domain_size: float = 8.0) -> torch.Tensor:
+    """Discrete proxy for E[||H_{G_θ}||_F^2] along a transported chunk.
+
+    Computes the second finite difference along the time axis,
+        a_t = (p_{t+1} - 2 p_t + p_{t-1}) / dt^2     [m/s^2]
+    and returns mean(||a_t||^2). This is the squared-Frobenius norm of
+    the discrete trajectory Hessian and converges to the analytic
+    Hessian Frobenius norm of the flow map as dt -> 0.
+
+    Args:
+        traj_phys: (T, 2) transported chunk in normalised [-1, 1].
+        dt_s: scalar — physical seconds between consecutive samples.
+        domain_size: physical extent of the unit interval (default 8 m).
+    Returns:
+        Scalar mean squared acceleration (m^2/s^4).
+    """
+    p_m = traj_phys * domain_size
+    a = (p_m[2:] - 2.0 * p_m[1:-1] + p_m[:-2]) / (dt_s ** 2)
+    return a.pow(2).sum(dim=-1).mean()
+
+
 def transport_train(model: nn.Module, z0: torch.Tensor,
                     n_steps: int = 8) -> torch.Tensor:
     """Differentiable RK4 transport used during training for endpoint
