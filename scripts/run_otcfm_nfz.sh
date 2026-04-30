@@ -3,14 +3,14 @@
 #SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%j_otcfm_nfz_train.out
 #SBATCH --error=./slurm_output/%j_otcfm_nfz_train.err
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --partition=gpu-preempt
+#SBATCH --gres=gpu:2080ti:1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
-#SBATCH --time=02:00:00
-#SBATCH --array=0-2
+#SBATCH --time=06:00:00
+#SBATCH --array=0-1
 
 set -euo pipefail
 mkdir -p slurm_output
@@ -19,7 +19,7 @@ module purge
 module load python/3.11.7
 source .venv/bin/activate
 
-SEEDS=(21 42 63)
+SEEDS=(21 63)
 SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
 OUT=results/otcfm_nfz_seed${SEED}
 

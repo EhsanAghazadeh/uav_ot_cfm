@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=otcfm_eval
 #SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
-#SBATCH --output=./slurm_output/%x_%j.out
-#SBATCH --error=./slurm_output/%x_%j.err
+#SBATCH --output=./slurm_output/%j_otcfm_eval.out
+#SBATCH --error=./slurm_output/%j_otcfm_eval.err
 #SBATCH --partition=cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -21,7 +21,7 @@ module purge
 module load python/3.11.7
 source .venv/bin/activate
 
-METHODS=(toes nonuniform_erg opt_transport sac otcfm otcfm_nfz otcfm_energy otcfm_energy_nfz)
+METHODS=(toes nonuniform_erg opt_transport sac otcfm otcfm_nfz otcfm_energy_lambda1 otcfm_energy_lambda1_nfz_l10 otcfm_energy_lambda10_nfz_l50)
 SEEDS=(21 42 63)
 
 # 1. prefix-stop curves
