@@ -1,0 +1,499 @@
+"""Fair-comparison evaluator with native trajectories (no resampling).
+
+Computes scalar coverage and Zeng-energy metrics on each trajectory's
+native (t_i, p_i) — no interpolation onto a common grid — then aggregates
+across seeds and emits both a human-readable summary and LaTeX-ready
+tables for the paper.
+
+Per-trajectory metrics
+----------------------
+Coverage (computed on the full native trajectory):
+    fourier_erg     Σ Λ_k (c_k - φ_k)^2  with Λ_k = (1+‖k‖²)^(-3/2),
+                    n_basis x n_basis basis on [0,1]^2.    (lower better)
+    density_corr    Pearson corr of smoothed visitation vs target.   (higher)
+    l1, l2          PMF distances of smoothed visitation vs target.   (lower)
+
+Energy / kinematics  (no resampling — native (t_i, p_i)):
+    T_total_s       t[-1] - t[0]
+    N_samples       len(pos)
+    arc_length_m    Σ ‖Δp‖ * domain_size
+    mean_speed_mps  arc_length_m / T_total_s
+    max_speed_mps   max( ‖Δp_i‖ * domain_size / Δt_i )
+    E_total_kJ      Σ P_zeng(V_i) Δt_i / 1000
+    P_mean_W        E_total_J / T_total_s            ★ headline energy
+    E_per_metre_J   E_total_J / arc_length_m
+
+Optional NFZ block (when --nfz-center is given):
+    nfz_frac_inside, nfz_dwell_s, nfz_n_incursions,
+    nfz_max_depth, nfz_path_inside_m
+
+Outputs
+-------
+    per_run.json                — one record per --traj
+    aggregated.json             — per-method mean / std / min / max
+    summary_table.tex           — headline LaTeX table (coverage + energy)
+    nfz_table.tex               — NFZ table (if NFZ args given)
+    summary.txt                 — human-readable copy of the same tables
+
+Usage
+-----
+    python eval_fair.py \
+        --traj toes:results/toes_seed21/trajectory.npz \
+        --traj toes:results/toes_seed42/trajectory.npz \
+        --traj otcfm:results/otcfm_seed21/trajectory.npz \
+        --traj otcfm:results/otcfm_seed42/trajectory.npz \
+        --milano-grid data/milano_grid_corrected.npy \
+        --nfz-center 0.19 0.03 --nfz-radius 0.10 \
+        --out-dir results/fair_metrics
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from collections import defaultdict
+
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fair_comparison import TrajectoryRecord
+from milano_baselines import RotaryWingEnergyModel
+from eval_nofly import violations as nfz_violations
+
+
+# ---------------------------------------------------------------------------
+# Coverage helpers (Fourier ergodic + smoothed-histogram metrics)
+# ---------------------------------------------------------------------------
+def _hk(k_vec):
+    h = 1.0
+    for ki in k_vec:
+        h *= 1.0 if ki == 0 else 0.5
+    return np.sqrt(h)
+
+
+def _build_basis(n_basis: int):
+    ks = np.arange(n_basis)
+    Kx, Ky = np.meshgrid(ks, ks, indexing="ij")
+    K = np.stack([Kx.ravel(), Ky.ravel()], axis=1).astype(np.float64)
+    hk = np.array([_hk(k) for k in K])
+    lam = (1.0 + np.linalg.norm(K, axis=1) ** 2) ** (-1.5)
+    return K, hk, lam
+
+
+def _fourier_basis_eval(pts_unit, K, hk):
+    arg = np.pi * pts_unit[:, None, :] * K[None, :, :]
+    return np.prod(np.cos(arg), axis=2) / hk[None, :]
+
+
+def _phik_from_target(target, K, hk):
+    h, w = target.shape
+    xs = np.linspace(0, 1, w)
+    ys = np.linspace(0, 1, h)
+    X, Y = np.meshgrid(xs, ys)
+    pts = np.stack([X.ravel(), Y.ravel()], axis=1)
+    vals = (target / target.sum()).ravel()
+    fk_pts = _fourier_basis_eval(pts, K, hk)
+    phik = np.einsum("m,mb->b", vals, fk_pts)
+    return phik / phik[0]
+
+
+def coverage_metrics(pos_unit, dt, target_smooth_pmf, K, hk, lam, phik,
+                     sigma=1.5):
+    T_now = max((pos_unit.shape[0] - 1) * dt, dt)
+    fk_t = _fourier_basis_eval(pos_unit, K, hk)
+    ck = fk_t.sum(axis=0) * (dt / T_now)
+    erg = float(np.sum(lam * (ck - phik) ** 2))
+
+    h, w = target_smooth_pmf.shape
+    H, _, _ = np.histogram2d(pos_unit[:, 0], pos_unit[:, 1],
+                             bins=[w, h], range=[[0, 1], [0, 1]])
+    H = H.T
+    if sigma > 0:
+        from scipy.ndimage import gaussian_filter
+        H = gaussian_filter(H, sigma=sigma)
+    s = H.sum()
+    H_pmf = H / s if s > 0 else H
+    diff = H_pmf - target_smooth_pmf
+    a, b = H_pmf.ravel(), target_smooth_pmf.ravel()
+    corr = (float(np.corrcoef(a, b)[0, 1])
+            if a.std() > 0 and b.std() > 0 else float("nan"))
+    return {
+        "fourier_erg": erg,
+        "density_corr": corr,
+        "l1": float(np.abs(diff).sum()),
+        "l2": float(np.sqrt((diff ** 2).sum())),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Energy / kinematics on NATIVE trajectory (no resampling)
+# ---------------------------------------------------------------------------
+def kinematics_and_energy(pos, times, domain_size: float,
+                          v_clip=(0.01, 100.0)):
+    """Return total time, arc length, speeds, mean/total Zeng energy."""
+    pos = np.asarray(pos, dtype=np.float64)
+    times = np.asarray(times, dtype=np.float64)
+    if pos.shape[0] < 2:
+        raise ValueError("trajectory has < 2 points")
+
+    dx = np.diff(pos, axis=0)
+    dt = np.diff(times)
+    dt = np.maximum(dt, 1e-12)
+    step_m = np.linalg.norm(dx, axis=1) * domain_size  # metres
+    v_mps = step_m / dt                                 # m/s per step
+
+    # Zeng power per step. We use the canonical RotaryWingEnergyModel
+    # (numpy power-curve). v_clip handles teleporting baselines whose
+    # native output has effectively-infinite-speed segments.
+    em = RotaryWingEnergyModel()
+    v_clipped = np.clip(v_mps, v_clip[0], v_clip[1])
+    P_steps = np.array([em.power(v) for v in v_clipped])  # W
+    E_steps = P_steps * dt                                  # J per step
+
+    T_total = float(times[-1] - times[0])
+    arc_length_m = float(step_m.sum())
+    E_total_J = float(E_steps.sum())
+    return {
+        "T_total_s": T_total,
+        "N_samples": int(pos.shape[0]),
+        "arc_length_m": arc_length_m,
+        "mean_speed_mps": float(arc_length_m / max(T_total, 1e-12)),
+        "max_speed_mps": float(v_mps.max()),
+        "E_total_kJ": E_total_J / 1000.0,
+        "P_mean_W": float(E_total_J / max(T_total, 1e-12)),
+        "E_per_metre_J": float(E_total_J / max(arc_length_m, 1e-12)),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Aggregation
+# ---------------------------------------------------------------------------
+SCALAR_KEYS = [
+    "fourier_erg", "density_corr", "l1", "l2",
+    "T_total_s", "N_samples", "arc_length_m",
+    "mean_speed_mps", "max_speed_mps",
+    "E_total_kJ", "P_mean_W", "E_per_metre_J",
+    "nfz_frac_inside", "nfz_dwell_time_s",
+    "nfz_n_incursions", "nfz_max_depth", "nfz_path_inside_norm",
+]
+
+
+def aggregate(per_run):
+    """Group by `method`, compute mean/std/min/max per scalar key."""
+    by_method = defaultdict(list)
+    for r in per_run:
+        by_method[r["method"]].append(r)
+    out = {}
+    for m, rows in by_method.items():
+        agg = {"n_seeds": len(rows)}
+        for k in SCALAR_KEYS:
+            vals = [r[k] for r in rows if k in r and r[k] is not None
+                    and not (isinstance(r[k], float) and np.isnan(r[k]))]
+            if not vals:
+                continue
+            arr = np.asarray(vals, dtype=np.float64)
+            agg[k] = {
+                "mean": float(arr.mean()),
+                "std": float(arr.std(ddof=0)),
+                "min": float(arr.min()),
+                "max": float(arr.max()),
+            }
+        out[m] = agg
+    return out
+
+
+# ---------------------------------------------------------------------------
+# LaTeX rendering
+# ---------------------------------------------------------------------------
+def _fmt_mean_std(stats, prec=3, sci=False):
+    if stats is None:
+        return "---"
+    m, s = stats["mean"], stats["std"]
+    if sci:
+        return f"{m:.{prec}e} $\\pm$ {s:.{prec}e}"
+    return f"{m:.{prec}f} $\\pm$ {s:.{prec}f}"
+
+
+def _direction(key):
+    """Return +1 if higher is better, -1 otherwise (used to bold the winner)."""
+    return +1 if key in ("density_corr",) else -1
+
+
+def _bold_best(values, key):
+    """Return a list of formatted strings with the winner bold-wrapped."""
+    sign = _direction(key)
+    means = [v["mean"] if v is not None else None for v in values]
+    valid = [(i, m) for i, m in enumerate(means) if m is not None]
+    if not valid:
+        return [_fmt_mean_std(v) for v in values]
+    best_i = max(valid, key=lambda x: sign * x[1])[0]
+    out = []
+    for i, v in enumerate(values):
+        s = _fmt_mean_std(v, prec=3, sci=(key in (
+            "E_total_kJ", "arc_length_m", "max_speed_mps")))
+        out.append(f"\\textbf{{{s}}}" if i == best_i else s)
+    return out
+
+
+HEADLINE_COLUMNS = [
+    ("fourier_erg",   r"$\mathcal{E}\downarrow$"),
+    ("l1",            r"$\ell_1\downarrow$"),
+    ("density_corr",  r"$\rho\uparrow$"),
+    ("P_mean_W",      r"$\bar P$ (W)$\downarrow$"),
+    ("E_total_kJ",    r"$E_\text{tot}$ (kJ)"),
+    ("T_total_s",     r"$T_\text{tot}$ (s)"),
+    ("arc_length_m",  r"$L$ (m)"),
+    ("E_per_metre_J", r"$E/L$ (J/m)$\downarrow$"),
+]
+
+NFZ_COLUMNS = [
+    ("nfz_frac_inside",     r"frac inside (\%)$\downarrow$"),
+    ("nfz_max_depth",       r"max depth$\downarrow$"),
+    ("nfz_n_incursions",    r"\# incursions$\downarrow$"),
+    ("nfz_dwell_time_s",    r"dwell (s)$\downarrow$"),
+    ("nfz_path_inside_norm",r"path-in (norm.)$\downarrow$"),
+]
+
+
+def render_headline_latex(agg, method_order, label="tab:fair"):
+    cols = HEADLINE_COLUMNS
+    n = len(cols)
+    out = []
+    out.append(r"\begin{table}[t]")
+    out.append(r"\caption{Fair comparison on Milano (mean $\pm$ std over seeds, "
+               r"computed on each method's native trajectory). "
+               r"$\bar P$ is the headline energy metric. \textbf{Bold} = best per column.}")
+    out.append(r"\label{" + label + "}")
+    out.append(r"\centering\small")
+    out.append(r"\begin{tabular}{l" + "c" * n + "}")
+    out.append(r"\toprule")
+    out.append("Method & " + " & ".join(c[1] for c in cols) + r" \\")
+    out.append(r"\midrule")
+    # Pre-compute bolding per column
+    cells = {}
+    for k, _ in cols:
+        col_vals = [agg.get(m, {}).get(k) for m in method_order]
+        cells[k] = _bold_best(col_vals, k)
+    for i, m in enumerate(method_order):
+        if m not in agg:
+            continue
+        row = [m.replace("_", r"\_")]
+        for k, _ in cols:
+            row.append(cells[k][i] if cells[k][i] is not None else "---")
+        out.append(" & ".join(row) + r" \\")
+    out.append(r"\bottomrule")
+    out.append(r"\end{tabular}")
+    out.append(r"\end{table}")
+    return "\n".join(out)
+
+
+def render_nfz_latex(agg, method_order, center, radius, label="tab:nfz"):
+    cols = NFZ_COLUMNS
+    out = []
+    out.append(r"\begin{table}[t]")
+    out.append(r"\caption{NFZ violation at $c=("
+               + f"{center[0]:.2f}, {center[1]:.2f}"
+               + r")$, $r=" + f"{radius:.2f}" + r"$. "
+               r"\texttt{frac inside} reports the fraction of trajectory "
+               r"samples whose position lies in the disc.}")
+    out.append(r"\label{" + label + "}")
+    out.append(r"\centering\small")
+    out.append(r"\begin{tabular}{l" + "c" * len(cols) + "}")
+    out.append(r"\toprule")
+    out.append("Method & " + " & ".join(c[1] for c in cols) + r" \\")
+    out.append(r"\midrule")
+    cells = {}
+    for k, _ in cols:
+        col_vals = [agg.get(m, {}).get(k) for m in method_order]
+        cells[k] = _bold_best(col_vals, k)
+    for i, m in enumerate(method_order):
+        if m not in agg:
+            continue
+        if "nfz_frac_inside" not in agg[m]:
+            continue
+        row = [m.replace("_", r"\_")]
+        for k, _ in cols:
+            row.append(cells[k][i] if cells[k][i] is not None else "---")
+        out.append(" & ".join(row) + r" \\")
+    out.append(r"\bottomrule")
+    out.append(r"\end{tabular}")
+    out.append(r"\end{table}")
+    return "\n".join(out)
+
+
+def render_text_table(agg, method_order, columns, header):
+    rows = [header, ["-" * 8] * len(header)]
+    for m in method_order:
+        if m not in agg:
+            continue
+        row = [m]
+        for k, _ in columns:
+            v = agg[m].get(k)
+            if v is None:
+                row.append("---")
+            else:
+                row.append(f"{v['mean']:.4g} ± {v['std']:.2g}")
+        rows.append(row)
+    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
+    return "\n".join(
+        "  ".join(c.ljust(widths[i]) for i, c in enumerate(r)) for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# Driver
+# ---------------------------------------------------------------------------
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--traj", action="append", required=True,
+                  help="method:path/to/trajectory.npz (repeatable). "
+                       "Multiple entries with the same method are treated "
+                       "as different seeds and aggregated.")
+    p.add_argument("--milano-grid", default="data/milano_grid_corrected.npy")
+    p.add_argument("--smooth-sigma", type=float, default=1.5)
+    p.add_argument("--n-basis", type=int, default=8)
+    p.add_argument("--domain-size", type=float, default=8.0,
+                  help="Physical extent of the unit interval in metres "
+                       "(matches RotaryWingEnergyModel default).")
+    p.add_argument("--v-clip-max", type=float, default=100.0,
+                  help="Cap instantaneous speed before applying Zeng power "
+                       "(handles teleporting baselines). Default 100 m/s.")
+    p.add_argument("--method-order", nargs="*", default=None,
+                  help="Optional explicit method order in tables.")
+    p.add_argument("--nfz-center", nargs=2, type=float, default=None,
+                  metavar=("CX", "CY"))
+    p.add_argument("--nfz-radius", type=float, default=None)
+    p.add_argument("--out-dir", required=True)
+    args = p.parse_args()
+    os.makedirs(args.out_dir, exist_ok=True)
+
+    # ---- Target ----
+    grid = np.load(args.milano_grid).astype(np.float64)
+    if args.smooth_sigma > 0:
+        from scipy.ndimage import gaussian_filter
+        grid_smooth = gaussian_filter(grid, sigma=args.smooth_sigma)
+    else:
+        grid_smooth = grid
+    grid_smooth = np.maximum(grid_smooth, 1e-12)
+    target_smooth_pmf = grid_smooth / grid_smooth.sum()
+
+    K, hk, lam = _build_basis(args.n_basis)
+    phik = _phik_from_target(grid_smooth, K, hk)
+
+    nfz_on = (args.nfz_center is not None and args.nfz_radius is not None)
+
+    # ---- Per-trajectory metrics ----
+    per_run = []
+    print(f"\nFair-metric evaluator — domain_size={args.domain_size} m, "
+          f"v_clip_max={args.v_clip_max} m/s, n_basis={args.n_basis}\n")
+    print(f"{'method':<22} {'seed-id':<8} {'N':>7} {'T(s)':>8} "
+          f"{'P̄(W)':>10} {'E(kJ)':>10} {'L(m)':>10} "
+          f"{'erg':>9} {'L1':>7} {'rho':>7}")
+    print("-" * 110)
+
+    for spec in args.traj:
+        if ":" not in spec:
+            raise SystemExit(f"--traj must be method:path (got {spec})")
+        method, path = spec.split(":", 1)
+        rec = TrajectoryRecord.from_npz(path)
+        xlim = (rec.domain[0], rec.domain[1])
+        ylim = (rec.domain[2], rec.domain[3])
+        pos = rec.pos
+        times = rec.times
+        dt_native = float(np.median(np.diff(times)))
+
+        # Map to unit-box for Fourier metrics
+        pos_unit = np.stack([
+            (pos[:, 0] - xlim[0]) / (xlim[1] - xlim[0]),
+            (pos[:, 1] - ylim[0]) / (ylim[1] - ylim[0]),
+        ], axis=1)
+        cov = coverage_metrics(pos_unit, dt_native, target_smooth_pmf,
+                               K, hk, lam, phik, sigma=args.smooth_sigma)
+        kin = kinematics_and_energy(pos, times, args.domain_size,
+                                    v_clip=(0.01, args.v_clip_max))
+
+        rec_out = {"method": method, "path": path, **cov, **kin}
+
+        if nfz_on:
+            v = nfz_violations(pos, dt_native, args.nfz_center,
+                               args.nfz_radius)
+            rec_out.update({
+                "nfz_frac_inside":   v["frac_inside"] * 100.0,  # report %
+                "nfz_dwell_time_s":  v["dwell_time_s"],
+                "nfz_n_incursions":  float(v["n_incursions"]),
+                "nfz_max_depth":     v["max_depth"],
+                "nfz_path_inside_norm": v.get("path_inside_norm",
+                                              v.get("path_inside_m", 0.0)),
+            })
+
+        per_run.append(rec_out)
+        seed_tag = os.path.basename(os.path.dirname(path))
+        print(f"{method:<22} {seed_tag:<8} {kin['N_samples']:>7d} "
+              f"{kin['T_total_s']:>8.2f} {kin['P_mean_W']:>10.3g} "
+              f"{kin['E_total_kJ']:>10.3g} {kin['arc_length_m']:>10.3g} "
+              f"{cov['fourier_erg']:>9.4f} {cov['l1']:>7.3f} "
+              f"{cov['density_corr']:>7.3f}")
+
+    # ---- Aggregate ----
+    agg = aggregate(per_run)
+
+    # method order: explicit or first-seen
+    if args.method_order:
+        method_order = list(args.method_order)
+    else:
+        method_order = []
+        for r in per_run:
+            if r["method"] not in method_order:
+                method_order.append(r["method"])
+
+    # ---- Save outputs ----
+    with open(os.path.join(args.out_dir, "per_run.json"), "w") as f:
+        json.dump(per_run, f, indent=2, default=float)
+    with open(os.path.join(args.out_dir, "aggregated.json"), "w") as f:
+        json.dump(agg, f, indent=2, default=float)
+
+    head_tex = render_headline_latex(agg, method_order)
+    with open(os.path.join(args.out_dir, "summary_table.tex"), "w") as f:
+        f.write(head_tex + "\n")
+
+    summary_txt = ["Fair-comparison summary",
+                   "=======================", "",
+                   "Coverage and energy (mean ± std over seeds):", ""]
+    summary_txt.append(render_text_table(
+        agg, method_order, HEADLINE_COLUMNS,
+        ["method"] + [c[1].split("$")[0].strip() or c[0] for c in HEADLINE_COLUMNS]))
+
+    if nfz_on:
+        nfz_tex = render_nfz_latex(agg, method_order,
+                                   args.nfz_center, args.nfz_radius)
+        with open(os.path.join(args.out_dir, "nfz_table.tex"), "w") as f:
+            f.write(nfz_tex + "\n")
+        summary_txt += ["", "NFZ violation:", ""]
+        summary_txt.append(render_text_table(
+            agg, method_order, NFZ_COLUMNS,
+            ["method"] + [c[0] for c in NFZ_COLUMNS]))
+
+    with open(os.path.join(args.out_dir, "summary.txt"), "w") as f:
+        f.write("\n".join(summary_txt) + "\n")
+
+    # ---- Print headline + LaTeX ----
+    print("\n" + "=" * 70)
+    print("LaTeX (summary_table.tex):")
+    print("=" * 70)
+    print(head_tex)
+    if nfz_on:
+        print("\n" + "=" * 70)
+        print("LaTeX (nfz_table.tex):")
+        print("=" * 70)
+        print(nfz_tex)
+
+    print(f"\nsaved: {args.out_dir}/per_run.json")
+    print(f"saved: {args.out_dir}/aggregated.json")
+    print(f"saved: {args.out_dir}/summary_table.tex")
+    if nfz_on:
+        print(f"saved: {args.out_dir}/nfz_table.tex")
+    print(f"saved: {args.out_dir}/summary.txt")
+
+
+if __name__ == "__main__":
+    main()
