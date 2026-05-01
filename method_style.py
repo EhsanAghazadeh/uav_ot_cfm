@@ -22,6 +22,7 @@ METHOD_COLOR = {
     # current winner-tagged dirs (one per loss combo)
     "otcfm_nfz_l5":                              "#8c564b",
     "otcfm_energy_lambda1e-2":                   "#17becf",
+    "otcfm_energy_la1e-4":                       "#c5b0d5",
     "otcfm_energy_lambda1e-3_nfz_l500":          "#bcbd22",
     "otcfm_energy_la1e-1_nfz_l500_le1e-3":       "#e377c2",
 }
@@ -43,6 +44,7 @@ METHOD_LABEL = {
     # current winner-tagged dirs
     "otcfm_nfz_l5":                              "OT-CFM +NFZ",
     "otcfm_energy_lambda1e-2":                   "OT-CFM +E",
+    "otcfm_energy_la1e-4":                       "OT-CFM +A",
     "otcfm_energy_lambda1e-3_nfz_l500":          "OT-CFM +NFZ+E",
     "otcfm_energy_la1e-1_nfz_l500_le1e-3":       "OT-CFM +NEA",
 }

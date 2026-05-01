@@ -21,7 +21,7 @@ module purge
 module load python/3.11.7
 source .venv/bin/activate
 
-METHODS=(toes nonuniform_erg opt_transport sac otcfm otcfm_nfz otcfm_energy_lambda1 otcfm_energy_lambda1_nfz_l10 otcfm_energy_lambda10_nfz_l50)
+METHODS=(toes nonuniform_erg opt_transport sac otcfm otcfm_nfz_l5 otcfm_energy_lambda1e-2 otcfm_energy_la1e-4 otcfm_energy_lambda1e-3_nfz_l500 otcfm_energy_la1e-1_nfz_l500_le1e-3)
 SEEDS=(21 42 63)
 
 # 1. prefix-stop curves
