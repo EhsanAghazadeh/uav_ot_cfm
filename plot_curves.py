@@ -14,6 +14,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from method_style import color as _color, label as _label
+
 
 METRIC_LABELS = {
     "fourier_erg": "Fourier ergodic metric  (lower is better)",
@@ -44,7 +46,8 @@ def plot_exp1_fixed_energy(curves, out_path, metric):
 
     for c in curves:
         y = _interp_at(e_grid, c["energy"], c[metric])
-        ax.plot(e_grid, y, lw=1.6, label=c["method"])
+        ax.plot(e_grid, y, lw=1.6, color=_color(c["method"]),
+                label=_label(c["method"]))
     ax.set_xscale("log")
     ax.set_xlabel("energy budget  Σ ‖v‖² · dt")
     ax.set_ylabel(METRIC_LABELS[metric])
@@ -65,7 +68,8 @@ def plot_exp2_fixed_coverage(curves, out_path, metric):
         # walk monotone in "better-direction" coverage; y(coverage)=energy
         cov_signed = sign * c[metric]
         y = _interp_at(cov_grid, cov_signed, c["energy"])
-        ax.plot(sign * cov_grid, y, lw=1.6, label=c["method"])
+        ax.plot(sign * cov_grid, y, lw=1.6, color=_color(c["method"]),
+                label=_label(c["method"]))
     ax.set_yscale("log")
     ax.set_xlabel(METRIC_LABELS[metric])
     ax.set_ylabel("energy needed  Σ ‖v‖² · dt")
@@ -82,7 +86,8 @@ def plot_exp3_fixed_n(curves, out_path):
     fig, axes = plt.subplots(n_panels, 1, figsize=(6.5, 3.5 * n_panels),
                              sharex=True)
     for c in curves:
-        axes[0].plot(c["n_points"], c["energy"], lw=1.6, label=c["method"])
+        axes[0].plot(c["n_points"], c["energy"], lw=1.6,
+                     color=_color(c["method"]), label=_label(c["method"]))
     axes[0].set_ylabel("energy  Σ ‖v‖² · dt")
     axes[0].set_xscale("log"); axes[0].set_yscale("log")
     axes[0].grid(alpha=0.3); axes[0].legend(); axes[0].set_title(
@@ -91,14 +96,16 @@ def plot_exp3_fixed_n(curves, out_path):
     if has_kj:
         for c in curves:
             axes[next_ax].plot(c["n_points"], c["E_total_kJ"], lw=1.6,
-                               label=c["method"])
+                               color=_color(c["method"]),
+                               label=_label(c["method"]))
         axes[next_ax].set_ylabel("E_total  (kJ)  [Zeng 2019]")
         axes[next_ax].set_xscale("log"); axes[next_ax].set_yscale("log")
         axes[next_ax].grid(alpha=0.3); axes[next_ax].legend()
         next_ax += 1
     for c in curves:
         axes[next_ax].plot(c["n_points"], c["fourier_erg"], lw=1.6,
-                           label=c["method"])
+                           color=_color(c["method"]),
+                           label=_label(c["method"]))
     axes[next_ax].set_ylabel("Fourier ergodic metric")
     axes[next_ax].set_yscale("log"); axes[next_ax].set_xscale("log")
     axes[next_ax].set_xlabel("number of samples")
@@ -116,7 +123,8 @@ def plot_exp4_fixed_kj(curves, out_path, metric):
     e_grid = np.geomspace(max(e_lo, 1e-6), e_hi, 80)
     for c in curves:
         y = _interp_at(e_grid, c["E_total_kJ"], c[metric])
-        ax.plot(e_grid, y, lw=1.6, label=c["method"])
+        ax.plot(e_grid, y, lw=1.6, color=_color(c["method"]),
+                label=_label(c["method"]))
     ax.set_xscale("log")
     ax.set_xlabel("E_total  (kJ)  [Zeng 2019 rotary-wing]")
     ax.set_ylabel(METRIC_LABELS[metric])
@@ -166,7 +174,8 @@ def main():
         e_grid = np.geomspace(max(e_lo, 1e-6), e_hi, 80)
         for c in curves:
             y = _interp_at(e_grid, c["energy"], c[metric])
-            ax.plot(e_grid, y, lw=1.5, label=c["method"])
+            ax.plot(e_grid, y, lw=1.5, color=_color(c["method"]),
+                    label=_label(c["method"]))
         ax.set_xscale("log")
         ax.set_xlabel("energy budget"); ax.set_ylabel(METRIC_LABELS[metric])
         ax.grid(alpha=0.3); ax.legend(fontsize=8)

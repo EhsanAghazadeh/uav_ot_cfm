@@ -26,22 +26,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 
-
-METHOD_COLOR = {
-    "toes":           "#1f77b4",
-    "nonuniform_erg": "#2ca02c",
-    "opt_transport":  "#d62728",
-    "sac":            "#9467bd",
-    "otcfm":          "#ff7f0e",
-    "otcfm_nfz":      "#8c564b",
-    "otcfm_energy":   "#17becf",
-    "otcfm_energy_nfz": "#bcbd22",
-}
-DEFAULT_COLOR = "#666666"
-
-
-def _color(m):
-    return METHOD_COLOR.get(m, DEFAULT_COLOR)
+from method_style import color as _color, label as _label
 
 
 def _convex_hull(points):
@@ -89,7 +74,7 @@ def _pareto_scatter(per_run, x_key, y_key, x_label, y_label, title, out_path,
         cx, cy = arr[:, 0].mean(), arr[:, 1].mean()
         ax.scatter(cx, cy, s=120, marker="*", color=col, edgecolor="black",
                    linewidth=0.6, zorder=5,
-                   label=f"{m}  (n={len(pts)})")
+                   label=f"{_label(m)}  (n={len(pts)})")
         # individual seeds
         ax.scatter(arr[:, 0], arr[:, 1], s=42, marker="o", color=col,
                    edgecolor="black", linewidth=0.4, alpha=0.85, zorder=4)
