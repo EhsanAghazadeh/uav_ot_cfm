@@ -3,13 +3,13 @@
 #SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%A_%a_otcfm_nfz_mask_plus_penalty.out
 #SBATCH --error=./slurm_output/%A_%a_otcfm_nfz_mask_plus_penalty.err
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --partition=gpu-preempt
+#SBATCH --gres=gpu:2080ti:1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
-#SBATCH --time=02:00:00
+#SBATCH --time=06:00:00
 #SBATCH --array=0-2
 
 # Ablation (b): OT-CFM trained on the NFZ-masked target *and* with the

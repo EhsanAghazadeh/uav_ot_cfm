@@ -2,16 +2,20 @@
 
 Renders the OT-CFM transport as a row of 2D-histogram panels at evenly
 spaced integration times s ∈ [0, 1], in the style of the canonical flow-
-matching figure (e.g. Tong et al. 2023, Fig. 2). Reads a trained model
-checkpoint from --model-dir and integrates with RK4, saving snapshots at
-each requested frame.
+matching figure (e.g. Tong et al. 2023, Fig. 2). The reference target
+distribution is shown as one extra panel after s=1, separated by a
+vertical dotted line.
+
+When `--nfz-center` and `--nfz-radius` are given, a hole is punched in
+the displayed target distribution (mass zeroed inside the disc and
+renormalised) and the disc is overlaid on every evolution panel.
 
 Usage:
   python plot_flow_evolution.py \
       --model-dir results/otcfm_milano_4x_v2 \
       --milano-grid data/milano_grid_corrected.npy \
-      --n-cycles 50 --pts-per-cycle 200 \
       --n-frames 8 \
+      --nfz-center 0.19 0.03 --nfz-radius 0.10 \
       --out results/otcfm_milano_4x_v2/flow_evolution.png
 """
 from __future__ import annotations
@@ -23,11 +27,13 @@ import torch
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from scipy.ndimage import gaussian_filter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from latent_trajectory import radial_trajectory, sample_uniform_annulus
 from ot_cfm import build_model
+from target_density import load_milano_target
 
 
 @torch.no_grad()
@@ -81,7 +87,8 @@ def main():
     p.add_argument("--n-particles", type=int, default=30000,
                   help="If source=uniform, number of latent particles.")
     p.add_argument("--n-frames", type=int, default=8,
-                  help="Number of panels (including s=0 and s=1).")
+                  help="Number of evolution panels (including s=0 and s=1). "
+                       "The target panel is added beyond these.")
     p.add_argument("--n-steps", type=int, default=40,
                   help="Total RK4 steps for the integration grid.")
     p.add_argument("--bins", type=int, default=160,
@@ -89,24 +96,24 @@ def main():
     p.add_argument("--smooth-hist", type=float, default=1.5,
                   help="Gaussian smoothing sigma applied to the histogram.")
     p.add_argument("--cmap", default="viridis",
-                  help="Colormap for the particle density panels.")
-    p.add_argument("--show-target", action="store_true", default=True,
-                  help="Overlay Milano density contour on each panel.")
-    p.add_argument("--contour-color", default="#ff6a00",
-                  help="Color of the Milano density contour overlay "
-                       "(default warm-orange, visible on viridis).")
-    p.add_argument("--contour-alpha", type=float, default=0.85,
-                  help="Opacity of the Milano contour lines (default 0.85).")
-    p.add_argument("--contour-lw", type=float, default=0.9,
-                  help="Linewidth of the Milano contour lines.")
+                  help="Colormap shared by evolution panels and target panel.")
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
                   metavar=("CX", "CY"),
-                  help="No-fly disc centre (normalised). Draws a red circle "
-                       "on every panel if set.")
+                  help="No-fly disc centre (normalised). When set with "
+                       "--nfz-radius, punches a hole in the target panel "
+                       "(zero density inside the disc, renormalised) and "
+                       "overlays the disc on every evolution panel.")
     p.add_argument("--nfz-radius", type=float, default=None,
                   help="No-fly disc radius (normalised).")
     p.add_argument("--nfz-color", default="#ff2a2a",
                   help="No-fly-zone overlay color (default bright red).")
+    p.add_argument("--target-title", default="Target",
+                  help="Title shown above the target panel.")
+    p.add_argument("--separator-color", default="#888888",
+                  help="Color of the dotted separator between the s=1 panel "
+                       "and the target panel.")
+    p.add_argument("--separator-lw", type=float, default=1.0,
+                  help="Linewidth of the dotted separator.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--out", required=True)
     args = p.parse_args()
@@ -128,7 +135,8 @@ def main():
                     map_location=device)
     model.load_state_dict(sd)
     model.eval()
-    print(f"loaded {args.model_dir}/model.pt  arch={arch}  hidden={hidden_dim}  layers={n_layers}  device={device}")
+    print(f"loaded {args.model_dir}/model.pt  arch={arch}  hidden={hidden_dim}"
+          f"  layers={n_layers}  device={device}")
 
     # ---- Latent samples ----
     if args.source == "radial":
@@ -145,25 +153,35 @@ def main():
         model, z0, args.n_steps, args.n_frames, device=device)
     print(f"snapshots: {len(snaps)}  s={np.round(s_vals, 3).tolist()}")
 
-    # ---- Target for overlay ----
-    target = np.load(args.milano_grid).astype(np.float64)
-    if args.smooth_sigma > 0:
-        target = gaussian_filter(target, sigma=args.smooth_sigma)
-    target = np.maximum(target, 1e-12)
+    # ---- Target (with optional NFZ hole) ----
+    nfz_on = args.nfz_center is not None and args.nfz_radius is not None
+    nfz_c = tuple(args.nfz_center) if nfz_on else None
+    nfz_r = float(args.nfz_radius) if nfz_on else None
+    t = load_milano_target(args.milano_grid,
+                           smooth_sigma=args.smooth_sigma,
+                           nfz_center=nfz_c, nfz_radius=nfz_r)
+    target = t["grid"]
+    if nfz_on:
+        print(f"  Target panel: NFZ-masked at c={nfz_c}, r={nfz_r}")
 
     # ---- Render ----
     xlim, ylim = (-1.0, 1.0), (-1.0, 1.0)
-    n = len(snaps)
-    fig, axes = plt.subplots(1, n, figsize=(2.05 * n, 2.4), dpi=170)
-    if n == 1:
+    n_evo = len(snaps)
+    n_total = n_evo + 1                                 # +1 for target panel
+    fig, axes = plt.subplots(1, n_total,
+                             figsize=(2.05 * n_total, 2.4), dpi=170)
+    if n_total == 1:
         axes = [axes]
 
-    th, tw = target.shape
-    Tx = np.linspace(xlim[0], xlim[1], tw)
-    Ty = np.linspace(ylim[0], ylim[1], th)
-    TX, TY = np.meshgrid(Tx, Ty)
-    target_levels = np.linspace(target.min(), target.max(), 6)[1:-1]
+    def _style(ax, title):
+        ax.set_xlim(xlim); ax.set_ylim(ylim)
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_aspect("equal")
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        ax.set_title(title, fontsize=9, color="#222", pad=4)
 
+    # Evolution panels (s = 0 ... 1)
     for i, (snap, s) in enumerate(zip(snaps, s_vals)):
         ax = axes[i]
         H, _, _ = np.histogram2d(
@@ -171,34 +189,44 @@ def main():
             range=[xlim, ylim])
         if args.smooth_hist > 0:
             H = gaussian_filter(H, sigma=args.smooth_hist)
-
         ax.imshow(H.T, origin="lower", extent=(*xlim, *ylim),
-                 cmap=args.cmap, aspect="equal", interpolation="bilinear")
-
-        if args.show_target:
-            ax.contour(TX, TY, target, levels=target_levels,
-                      colors=args.contour_color, alpha=args.contour_alpha,
-                      linewidths=args.contour_lw)
-
-        if args.nfz_center is not None and args.nfz_radius is not None:
-            disc = plt.Circle(tuple(args.nfz_center), args.nfz_radius,
+                  cmap=args.cmap, aspect="equal", interpolation="bilinear")
+        if nfz_on:
+            disc = plt.Circle(nfz_c, nfz_r,
                               facecolor=args.nfz_color, alpha=0.18,
                               edgecolor=args.nfz_color, linewidth=1.4,
                               linestyle="--", zorder=5)
             ax.add_patch(disc)
+        _style(ax, f"s = {s:.2f}")
 
-        ax.set_xlim(xlim); ax.set_ylim(ylim)
-        ax.set_xticks([]); ax.set_yticks([])
-        ax.set_aspect("equal")
-        for sp in ax.spines.values():
-            sp.set_visible(False)
-        ax.set_title(f"s = {s:.2f}", fontsize=9, color="#222", pad=4)
+    # Target panel (after s=1, same imshow style as the evolution panels)
+    ax_t = axes[-1]
+    ax_t.imshow(target, origin="lower", extent=(*xlim, *ylim),
+                cmap=args.cmap, aspect="equal", interpolation="bilinear")
+    if nfz_on:
+        disc = plt.Circle(nfz_c, nfz_r,
+                          facecolor=args.nfz_color, alpha=0.18,
+                          edgecolor=args.nfz_color, linewidth=1.4,
+                          linestyle="--", zorder=5)
+        ax_t.add_patch(disc)
+    _style(ax_t, args.target_title)
 
-    fig.suptitle(
-        f"OT-CFM flow:  annular latent  →  Milano density   "
-        f"(N={len(z0):,}, n_steps={args.n_steps})",
-        fontsize=11, y=0.99, color="#222")
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.tight_layout()
+
+    # Vertical dotted separator between the s=1 panel and the target panel.
+    # We compute the midpoint between the two axes in figure coordinates
+    # *after* tight_layout has laid them out.
+    last_evo_pos = axes[-2].get_position()
+    target_pos = axes[-1].get_position()
+    sep_x = 0.5 * (last_evo_pos.x1 + target_pos.x0)
+    y0 = min(last_evo_pos.y0, target_pos.y0) - 0.01
+    y1 = max(last_evo_pos.y1, target_pos.y1) + 0.01
+    fig.add_artist(Line2D([sep_x, sep_x], [y0, y1],
+                          transform=fig.transFigure,
+                          color=args.separator_color,
+                          linestyle=":", linewidth=args.separator_lw,
+                          zorder=10))
+
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".",
                 exist_ok=True)
     fig.savefig(args.out, bbox_inches="tight", pad_inches=0.05,
