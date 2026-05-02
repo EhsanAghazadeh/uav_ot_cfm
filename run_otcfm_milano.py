@@ -29,17 +29,25 @@ from ot_cfm import (VelocityNet, build_model, cfm_loss, transport,
 
 
 def make_grid_sampler(grid_path, smooth_sigma, eps_floor,
-                      xlim=(-1.0, 1.0), ylim=(-1.0, 1.0), seed=0):
-    g = np.load(grid_path).astype(np.float64)
-    if smooth_sigma and smooth_sigma > 0:
-        from scipy.ndimage import gaussian_filter
-        g = gaussian_filter(g, sigma=float(smooth_sigma))
-    g = np.maximum(g, eps_floor)
+                      xlim=(-1.0, 1.0), ylim=(-1.0, 1.0), seed=0,
+                      nfz_center=None, nfz_radius=None):
+    """Build a Milano-density sampler.
 
+    When `nfz_center` and `nfz_radius` are provided, the underlying
+    target density is zeroed inside the disc and renormalised, so
+    sampler output never lands in the NFZ. This is the principled
+    encoding of the constraint at the *distribution* level (cf. §2.3
+    of the paper); pair with the soft penalty for residual gradient
+    signal at the boundary.
+    """
+    from target_density import load_milano_target
+    t = load_milano_target(grid_path, smooth_sigma=smooth_sigma,
+                           eps_floor=eps_floor, xlim=xlim, ylim=ylim,
+                           nfz_center=nfz_center, nfz_radius=nfz_radius)
+    g = t["grid"]
+    xs, ys = t["xs"], t["ys"]
     h, w = g.shape
-    xs = np.linspace(xlim[0], xlim[1], w)
-    ys = np.linspace(ylim[0], ylim[1], h)
-    p = (g / g.sum()).reshape(-1)
+    p = t["pmf"].reshape(-1)
     cdf = np.cumsum(p); cdf[-1] = 1.0
     dx = (xlim[1] - xlim[0]) / max(w - 1, 1)
     dy = (ylim[1] - ylim[0]) / max(h - 1, 1)
@@ -229,6 +237,12 @@ def main():
     p.add_argument("--domain-size", type=float, default=8.0,
                   help="Physical extent of the unit interval in metres "
                        "(matches RotaryWingEnergyModel default).")
+    p.add_argument("--mask-nfz-target", action="store_true",
+                  help="Zero out the target density inside the NFZ disc "
+                       "before training (requires --nfz-center / "
+                       "--nfz-radius). The sampler then never produces "
+                       "targets inside the disc, in addition to the soft "
+                       "penalty controlled by --nfz-lambda.")
     p.add_argument("--reuse-model-from", default=None,
                   help="Load checkpoint if it exists; else train and save")
     p.add_argument("--force-retrain", action="store_true")
@@ -236,8 +250,21 @@ def main():
     args = p.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
+    mask_nfz_c = (tuple(args.nfz_center)
+                  if args.mask_nfz_target and args.nfz_center is not None
+                  else None)
+    mask_nfz_r = (float(args.nfz_radius)
+                  if args.mask_nfz_target and args.nfz_radius is not None
+                  else None)
+    if args.mask_nfz_target and (mask_nfz_c is None or mask_nfz_r is None):
+        raise SystemExit("--mask-nfz-target requires --nfz-center and "
+                         "--nfz-radius.")
+    if mask_nfz_c is not None:
+        print(f"  Target density: NFZ-masked at c={mask_nfz_c}, r={mask_nfz_r}")
     sample_target = make_grid_sampler(args.milano_grid, args.smooth_sigma,
-                                      args.eps_floor)
+                                      args.eps_floor,
+                                      nfz_center=mask_nfz_c,
+                                      nfz_radius=mask_nfz_r)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"device: {device}"
@@ -338,6 +365,7 @@ def main():
         "energy_n_cycles": int(args.energy_n_cycles),
         "energy_pts_per_cycle": int(args.energy_pts_per_cycle),
         "acc_lambda": float(args.acc_lambda),
+        "mask_nfz_target": bool(args.mask_nfz_target),
         "domain_size": float(args.domain_size),
         "train_wall_clock_s": float(train_s),
         "latent_gen_wall_clock_s": float(latent_s),

@@ -363,19 +363,33 @@ def main():
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
                   metavar=("CX", "CY"))
     p.add_argument("--nfz-radius", type=float, default=None)
+    p.add_argument("--mask-nfz-target", action="store_true",
+                  help="Compute coverage metrics against the NFZ-masked "
+                       "target (zero density inside the disc, renormalised). "
+                       "Required for fair NFZ-condition comparison: methods "
+                       "trained on the masked target should also be evaluated "
+                       "against it. Requires --nfz-center / --nfz-radius.")
     p.add_argument("--out-dir", required=True)
     args = p.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
+    if args.mask_nfz_target and (args.nfz_center is None
+                                 or args.nfz_radius is None):
+        raise SystemExit("--mask-nfz-target requires --nfz-center and "
+                         "--nfz-radius.")
 
     # ---- Target ----
-    grid = np.load(args.milano_grid).astype(np.float64)
-    if args.smooth_sigma > 0:
-        from scipy.ndimage import gaussian_filter
-        grid_smooth = gaussian_filter(grid, sigma=args.smooth_sigma)
-    else:
-        grid_smooth = grid
-    grid_smooth = np.maximum(grid_smooth, 1e-12)
-    target_smooth_pmf = grid_smooth / grid_smooth.sum()
+    from target_density import load_milano_target
+    target_nfz_c = tuple(args.nfz_center) if args.mask_nfz_target else None
+    target_nfz_r = float(args.nfz_radius) if args.mask_nfz_target else None
+    if args.mask_nfz_target:
+        print(f"  Coverage target: NFZ-masked at c={target_nfz_c}, "
+              f"r={target_nfz_r}")
+    t_target = load_milano_target(args.milano_grid,
+                                  smooth_sigma=args.smooth_sigma,
+                                  nfz_center=target_nfz_c,
+                                  nfz_radius=target_nfz_r)
+    grid_smooth = t_target["grid"]
+    target_smooth_pmf = t_target["pmf"]
 
     K, hk, lam = _build_basis(args.n_basis)
     phik = _phik_from_target(grid_smooth, K, hk)

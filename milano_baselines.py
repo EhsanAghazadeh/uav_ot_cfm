@@ -122,15 +122,19 @@ class MilanoRateMap:
     delta = 0.0
 
     def __init__(self, grid_path, smooth_sigma=1.5, eps_floor=1e-12,
-                 xlim=(-1.0, 1.0), ylim=(-1.0, 1.0)):
-        g = np.load(grid_path).astype(np.float64)
-        if smooth_sigma > 0:
-            g = gaussian_filter(g, sigma=float(smooth_sigma))
-        g = np.maximum(g, eps_floor)
+                 xlim=(-1.0, 1.0), ylim=(-1.0, 1.0),
+                 nfz_center=None, nfz_radius=None):
+        from target_density import load_milano_target
+        t = load_milano_target(grid_path, smooth_sigma=smooth_sigma,
+                               eps_floor=eps_floor, xlim=xlim, ylim=ylim,
+                               nfz_center=nfz_center, nfz_radius=nfz_radius)
+        g = t["grid"]
         self.xlim, self.ylim = xlim, ylim
+        self.nfz_center = nfz_center
+        self.nfz_radius = nfz_radius
         h, w = g.shape
-        xs = np.linspace(xlim[0], xlim[1], w)
-        ys = np.linspace(ylim[0], ylim[1], h)
+        xs = t["xs"]
+        ys = t["ys"]
         cell_area = ((xlim[1] - xlim[0]) / max(w - 1, 1)
                      * (ylim[1] - ylim[0]) / max(h - 1, 1))
         mass = g / g.sum()

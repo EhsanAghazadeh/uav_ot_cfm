@@ -156,7 +156,20 @@ def main():
                   help="If set, linearly rescale times so total horizon = "
                        "target-T (s) before resampling. Use with --resample-dt "
                        "to make all methods share N = target-T / resample-dt.")
+    p.add_argument("--nfz-center", nargs=2, type=float, default=None,
+                  metavar=("CX", "CY"),
+                  help="No-fly disc centre in normalised coords (with "
+                       "--mask-nfz-target).")
+    p.add_argument("--nfz-radius", type=float, default=None,
+                  help="No-fly disc radius (with --mask-nfz-target).")
+    p.add_argument("--mask-nfz-target", action="store_true",
+                  help="Compute coverage metrics against the NFZ-masked "
+                       "target. Requires --nfz-center / --nfz-radius.")
     args = p.parse_args()
+    if args.mask_nfz_target and (args.nfz_center is None
+                                 or args.nfz_radius is None):
+        raise SystemExit("--mask-nfz-target requires --nfz-center and "
+                         "--nfz-radius.")
 
     os.makedirs(args.out_dir, exist_ok=True)
     rec = TrajectoryRecord.from_npz(args.traj)
@@ -194,15 +207,23 @@ def main():
     ], axis=1)
 
     # Target setup
-    grid = np.load(args.milano_grid).astype(np.float64)
-    if args.smooth_sigma > 0:
-        from scipy.ndimage import gaussian_filter
-        grid_smooth = gaussian_filter(grid, sigma=args.smooth_sigma)
-    else:
-        grid_smooth = grid
-    grid_smooth = np.maximum(grid_smooth, 1e-12)
-    target_pmf = grid / grid.sum()
-    target_smooth_pmf = grid_smooth / grid_smooth.sum()
+    from target_density import load_milano_target
+    target_nfz_c = tuple(args.nfz_center) if args.mask_nfz_target else None
+    target_nfz_r = float(args.nfz_radius) if args.mask_nfz_target else None
+    if args.mask_nfz_target:
+        print(f"  Coverage target: NFZ-masked at c={target_nfz_c}, "
+              f"r={target_nfz_r}")
+    t_target = load_milano_target(args.milano_grid,
+                                  smooth_sigma=args.smooth_sigma,
+                                  nfz_center=target_nfz_c,
+                                  nfz_radius=target_nfz_r)
+    grid_smooth = t_target["grid"]
+    target_smooth_pmf = t_target["pmf"]
+    # raw (unsmoothed) PMF for L1/L2 reference
+    raw = np.load(args.milano_grid).astype(np.float64)
+    if t_target["nfz_mask"] is not None:
+        raw = np.where(t_target["nfz_mask"], 0.0, raw)
+    target_pmf = raw / max(raw.sum(), 1e-12)
 
     K, hk, lam = _build_basis(args.n_basis)
     phik = phik_from_target(grid_smooth, K, hk)

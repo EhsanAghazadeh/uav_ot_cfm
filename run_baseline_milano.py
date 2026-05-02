@@ -44,13 +44,19 @@ def _remap_to_physical(pos_unit, xlim, ylim):
 
 
 def plan_toes(args):
-    from scipy.ndimage import gaussian_filter
     from toes_baseline import TOESConfig, solve_toes
+    from target_density import load_milano_target
 
-    grid = np.load(args.milano_grid).astype(np.float64)
-    if args.smooth_sigma > 0:
-        grid = gaussian_filter(grid, sigma=float(args.smooth_sigma))
-    grid = np.maximum(grid, args.eps_floor)
+    nfz_c = (tuple(args.nfz_center)
+             if args.mask_nfz_target and args.nfz_center is not None
+             else None)
+    nfz_r = (float(args.nfz_radius)
+             if args.mask_nfz_target and args.nfz_radius is not None
+             else None)
+    t = load_milano_target(args.milano_grid, smooth_sigma=args.smooth_sigma,
+                           eps_floor=args.eps_floor,
+                           nfz_center=nfz_c, nfz_radius=nfz_r)
+    grid = t["grid"]
     xlim, ylim = (-1.0, 1.0), (-1.0, 1.0)
 
     cfg = TOESConfig(
@@ -85,6 +91,13 @@ def plan_toes(args):
         "n_iter_run": int(sol.n_iter),
         "erg_metric_fixed_horizon": float(sol.erg_metric),
         "milano_smooth_sigma": float(args.smooth_sigma),
+        "mask_nfz_target": bool(args.mask_nfz_target),
+        "nfz_center": (list(args.nfz_center)
+                       if args.mask_nfz_target and args.nfz_center is not None
+                       else None),
+        "nfz_radius": (float(args.nfz_radius)
+                       if args.mask_nfz_target and args.nfz_radius is not None
+                       else None),
         "x0_phys": [float(x) for x in args.x0],
         "xf_phys": [float(x) for x in args.xf],
         "plan_wall_clock_s": float(plan_s),
@@ -96,7 +109,14 @@ def plan_toes(args):
 # Polar baselines (ergodic / opt-transport / SAC)
 # ---------------------------------------------------------------------------
 def plan_nonuniform_erg(args):
-    rate_map = MilanoRateMap(args.milano_grid, smooth_sigma=args.smooth_sigma)
+    _nfz_c = (tuple(args.nfz_center)
+              if args.mask_nfz_target and args.nfz_center is not None
+              else None)
+    _nfz_r = (float(args.nfz_radius)
+              if args.mask_nfz_target and args.nfz_radius is not None
+              else None)
+    rate_map = MilanoRateMap(args.milano_grid, smooth_sigma=args.smooth_sigma,
+                             nfz_center=_nfz_c, nfz_radius=_nfz_r)
     t0 = time.perf_counter()
     gen = NonUniformErgodic(rate_map, phi_max=args.phi_max,
                             alpha_res=args.alpha_res, s_res=args.s_res)
@@ -116,6 +136,13 @@ def plan_nonuniform_erg(args):
         "T_total_s": float(times[-1]),
         "N": int(pos.shape[0]),
         "milano_smooth_sigma": float(args.smooth_sigma),
+        "mask_nfz_target": bool(args.mask_nfz_target),
+        "nfz_center": (list(args.nfz_center)
+                       if args.mask_nfz_target and args.nfz_center is not None
+                       else None),
+        "nfz_radius": (float(args.nfz_radius)
+                       if args.mask_nfz_target and args.nfz_radius is not None
+                       else None),
         "seed": int(args.seed),
         "plan_wall_clock_s": float(plan_s),
     }
@@ -123,7 +150,14 @@ def plan_nonuniform_erg(args):
 
 
 def plan_opt_transport(args):
-    rate_map = MilanoRateMap(args.milano_grid, smooth_sigma=args.smooth_sigma)
+    _nfz_c = (tuple(args.nfz_center)
+              if args.mask_nfz_target and args.nfz_center is not None
+              else None)
+    _nfz_r = (float(args.nfz_radius)
+              if args.mask_nfz_target and args.nfz_radius is not None
+              else None)
+    rate_map = MilanoRateMap(args.milano_grid, smooth_sigma=args.smooth_sigma,
+                             nfz_center=_nfz_c, nfz_radius=_nfz_r)
     t0 = time.perf_counter()
     gen = OptimalTransportCoverage(rate_map, grid_resolution=args.ot_grid_res)
     pos = gen.generate(num_points=args.num_points, seed=args.seed)
@@ -137,6 +171,13 @@ def plan_opt_transport(args):
         "T_total_s": float(times[-1]),
         "N": int(pos.shape[0]),
         "milano_smooth_sigma": float(args.smooth_sigma),
+        "mask_nfz_target": bool(args.mask_nfz_target),
+        "nfz_center": (list(args.nfz_center)
+                       if args.mask_nfz_target and args.nfz_center is not None
+                       else None),
+        "nfz_radius": (float(args.nfz_radius)
+                       if args.mask_nfz_target and args.nfz_radius is not None
+                       else None),
         "seed": int(args.seed),
         "plan_wall_clock_s": float(plan_s),
     }
@@ -144,7 +185,14 @@ def plan_opt_transport(args):
 
 
 def plan_sac(args):
-    rate_map = MilanoRateMap(args.milano_grid, smooth_sigma=args.smooth_sigma)
+    _nfz_c = (tuple(args.nfz_center)
+              if args.mask_nfz_target and args.nfz_center is not None
+              else None)
+    _nfz_r = (float(args.nfz_radius)
+              if args.mask_nfz_target and args.nfz_radius is not None
+              else None)
+    rate_map = MilanoRateMap(args.milano_grid, smooth_sigma=args.smooth_sigma,
+                             nfz_center=_nfz_c, nfz_radius=_nfz_r)
     gen = SACTrajectoryGenerator(rate_map, grid_size=args.sac_grid_size,
                                  comm_range=args.sac_comm_range,
                                  train_steps=args.sac_train_steps)
@@ -172,6 +220,13 @@ def plan_sac(args):
         "T_total_s": float(times[-1]),
         "N": int(pos.shape[0]),
         "milano_smooth_sigma": float(args.smooth_sigma),
+        "mask_nfz_target": bool(args.mask_nfz_target),
+        "nfz_center": (list(args.nfz_center)
+                       if args.mask_nfz_target and args.nfz_center is not None
+                       else None),
+        "nfz_radius": (float(args.nfz_radius)
+                       if args.mask_nfz_target and args.nfz_radius is not None
+                       else None),
         "seed": int(args.seed),
         "plan_wall_clock_s": plan_s,
     }
@@ -222,7 +277,23 @@ def main():
     p.add_argument("--sac-comm-range", type=float, default=0.18)
     p.add_argument("--sac-train-steps", type=int, default=200_000)
 
+    # NFZ-aware target (used when running NFZ-condition baselines)
+    p.add_argument("--nfz-center", nargs=2, type=float, default=None,
+                  metavar=("CX", "CY"),
+                  help="No-fly disc centre in normalised coords.")
+    p.add_argument("--nfz-radius", type=float, default=None,
+                  help="No-fly disc radius in normalised coords.")
+    p.add_argument("--mask-nfz-target", action="store_true",
+                  help="Zero out target density inside the NFZ disc and "
+                       "renormalise. Requires --nfz-center / --nfz-radius. "
+                       "Use this for fair NFZ-condition comparisons: every "
+                       "method then plans against the same reachable target.")
+
     args = p.parse_args()
+    if args.mask_nfz_target and (args.nfz_center is None
+                                 or args.nfz_radius is None):
+        raise SystemExit("--mask-nfz-target requires both --nfz-center and "
+                         "--nfz-radius.")
     os.makedirs(args.out_dir, exist_ok=True)
 
     print(f"method       : {args.method}")
