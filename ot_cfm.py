@@ -112,15 +112,135 @@ class VelocityNetV2(nn.Module):
         return self.out(h)
 
 
+class FourierFeatures(nn.Module):
+    """Fixed Random Fourier Features for low-dim spatial input.
+
+    Maps x in R^d to [sin(B x), cos(B x)] where B is a frozen Gaussian
+    random matrix scaled by `sigma`. Lifts the MLP's spectral bias away
+    from low frequencies (Tancik et al. 2020); the bandwidth `sigma`
+    directly controls how spiky a target the network can represent.
+    """
+    def __init__(self, in_dim: int, n_freqs: int = 16, sigma: float = 5.0,
+                 seed: int = 0):
+        super().__init__()
+        g = torch.Generator().manual_seed(seed)
+        B = torch.randn(n_freqs, in_dim, generator=g) * sigma
+        self.register_buffer("B", 2 * np.pi * B)
+
+    @property
+    def out_dim(self) -> int:
+        return 2 * int(self.B.shape[0])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        proj = x @ self.B.T                              # (B, n_freqs)
+        return torch.cat([proj.sin(), proj.cos()], dim=-1)
+
+
+class FiLMResBlock(nn.Module):
+    """Pre-norm residual block with FiLM (gamma, beta) modulation.
+
+    A learnt linear from the time-embedding produces per-channel
+    (gamma, beta) used to scale and shift the LayerNorm-ed activations
+    (Perez et al. 2017). More expressive than concat-conditioning.
+    The FiLM linear is zero-initialised so the block starts as identity
+    plus the residual-MLP path.
+    """
+    def __init__(self, h: int, cond_dim: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(h)
+        self.film = nn.Linear(cond_dim, 2 * h)
+        nn.init.zeros_(self.film.weight)
+        nn.init.zeros_(self.film.bias)
+        self.fc1 = nn.Linear(h, h)
+        self.fc2 = nn.Linear(h, h)
+
+    def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+        gamma, beta = self.film(c).chunk(2, dim=-1)
+        h = self.norm(x) * (1.0 + gamma) + beta
+        return x + self.fc2(nn.functional.silu(self.fc1(h)))
+
+
+class VelocityNetV3(nn.Module):
+    """Random-Fourier-feature + FiLM-conditioned residual MLP.
+
+    For OT-CFM on irregular 2D targets (e.g. Milano density). Spatial
+    RFFs let the network represent fine local detail without
+    over-smoothing the rest of the domain; FiLM time conditioning
+    scales and shifts every layer's activations based on the
+    integration time s in [0, 1].
+
+    Same forward signature as VelocityNet / VelocityNetV2 so cfm_loss /
+    transport / load_state_dict are interchangeable.
+    """
+    def __init__(self, hidden_dim: int = 256, n_layers: int = 12,
+                 n_spatial_freqs: int = 16, sigma_x: float = 5.0,
+                 n_time_freqs: int = 16):
+        super().__init__()
+        self.spatial_ff = FourierFeatures(2, n_spatial_freqs, sigma_x)
+        self.in_proj = nn.Linear(self.spatial_ff.out_dim, hidden_dim)
+        self.t_embed = TimeEmbedding(hidden_dim, n_time_freqs)
+        self.blocks = nn.ModuleList(
+            [FiLMResBlock(hidden_dim, hidden_dim) for _ in range(n_layers)])
+        self.out = nn.Sequential(
+            nn.LayerNorm(hidden_dim), nn.SiLU(),
+            nn.Linear(hidden_dim, 2))
+
+    def forward(self, s: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        if s.dim() == 1:
+            s = s.unsqueeze(1)
+        c = self.t_embed(s)
+        h = self.in_proj(self.spatial_ff(y))
+        for blk in self.blocks:
+            h = blk(h, c)
+        return self.out(h)
+
+
 def build_model(arch: str = "v1", hidden_dim: int = 512, n_layers: int = 6,
-                n_time_freqs: int = 16) -> nn.Module:
-    """Select between VelocityNet (v1) and VelocityNetV2 (v2)."""
+                n_time_freqs: int = 16, n_spatial_freqs: int = 16,
+                sigma_x: float = 5.0) -> nn.Module:
+    """Select VelocityNet (v1), VelocityNetV2 (v2), or VelocityNetV3 (v3)."""
     if arch == "v1":
         return VelocityNet(hidden_dim=hidden_dim, n_layers=n_layers)
     if arch == "v2":
         return VelocityNetV2(hidden_dim=hidden_dim, n_layers=n_layers,
                              n_time_freqs=n_time_freqs)
+    if arch == "v3":
+        return VelocityNetV3(hidden_dim=hidden_dim, n_layers=n_layers,
+                             n_spatial_freqs=n_spatial_freqs, sigma_x=sigma_x,
+                             n_time_freqs=n_time_freqs)
     raise ValueError(f"unknown arch {arch!r}")
+
+
+class ModelEMA:
+    """Exponential moving average of model parameters.
+
+    Standard recipe in flow-matching / diffusion training:
+        theta_ema <- decay * theta_ema + (1 - decay) * theta.
+    EMA-averaged weights typically generate samples with lower W_2
+    error than the raw training weights at end of run; the cost is one
+    extra state-dict copy and an in-place update per step (no extra
+    backward).
+    """
+    def __init__(self, model: nn.Module, decay: float = 0.999):
+        self.decay = float(decay)
+        self.shadow = {k: v.detach().clone()
+                       for k, v in model.state_dict().items()}
+
+    @torch.no_grad()
+    def update(self, model: nn.Module) -> None:
+        sd = model.state_dict()
+        for k, v in sd.items():
+            if v.dtype.is_floating_point:
+                self.shadow[k].mul_(self.decay).add_(
+                    v.detach(), alpha=1.0 - self.decay)
+            else:
+                self.shadow[k].copy_(v)
+
+    def state_dict(self) -> dict:
+        return self.shadow
+
+    def copy_to(self, model: nn.Module) -> None:
+        model.load_state_dict(self.shadow)
 
 
 def ot_coupling(z0: np.ndarray, x1: np.ndarray, reg: float = 0.05) -> np.ndarray:

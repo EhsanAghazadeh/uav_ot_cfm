@@ -126,11 +126,15 @@ def main():
     hidden_dim = int(meta.get("hidden_dim", 512))
     n_layers = int(meta.get("n_layers", 6))
     n_time_freqs = int(meta.get("n_time_freqs", 16))
+    n_spatial_freqs = int(meta.get("n_spatial_freqs", 16))
+    sigma_x = float(meta.get("sigma_x", 5.0))
     delta = float(meta.get("delta", 0.05))
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = build_model(arch=arch, hidden_dim=hidden_dim, n_layers=n_layers,
-                       n_time_freqs=n_time_freqs).to(device)
+                       n_time_freqs=n_time_freqs,
+                       n_spatial_freqs=n_spatial_freqs,
+                       sigma_x=sigma_x).to(device)
     sd = torch.load(os.path.join(args.model_dir, "model.pt"),
                     map_location=device)
     model.load_state_dict(sd)

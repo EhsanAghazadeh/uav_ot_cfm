@@ -25,7 +25,7 @@ from fair_comparison import save_trajectory_npz
 from latent_trajectory import radial_trajectory, sample_uniform_annulus
 from ot_cfm import (VelocityNet, build_model, cfm_loss, transport,
                     transport_train, nfz_penalty, energy_penalty,
-                    acceleration_penalty)
+                    acceleration_penalty, ModelEMA)
 
 
 def make_grid_sampler(grid_path, smooth_sigma, eps_floor,
@@ -68,6 +68,8 @@ def make_grid_sampler(grid_path, smooth_sigma, eps_floor,
 
 def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
               n_layers, delta, seed, arch="v1", n_time_freqs=16,
+              n_spatial_freqs=16, sigma_x=5.0,
+              ema_decay=0.0,
               nfz_center=None, nfz_radius=None, nfz_margin=0.05,
               nfz_lambda=0.0, nfz_steps=8, nfz_reject_targets=False,
               energy_lambda=0.0, energy_chunk_size=64, energy_steps=8,
@@ -76,9 +78,14 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
               domain_size=8.0, device="cpu"):
     torch.manual_seed(seed)
     model = build_model(arch=arch, hidden_dim=hidden_dim, n_layers=n_layers,
-                        n_time_freqs=n_time_freqs).to(device)
+                        n_time_freqs=n_time_freqs,
+                        n_spatial_freqs=n_spatial_freqs,
+                        sigma_x=sigma_x).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, n_epochs)
+    ema = ModelEMA(model, decay=ema_decay) if ema_decay > 0.0 else None
+    if ema is not None:
+        print(f"  EMA on: decay={ema_decay:.4g}")
 
     nfz_on = (nfz_center is not None and nfz_radius is not None
               and nfz_lambda > 0.0)
@@ -168,6 +175,8 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step(); sched.step()
+        if ema is not None:
+            ema.update(model)
         losses.append(loss.item())
         cfm_log.append(float(loss_cfm.item()))
         nfz_log.append(pen_val)
@@ -182,6 +191,9 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
             if acc_on:
                 extra += f"  acc={acc_log[-1]:.3g}"
             print(f"  epoch {ep+1}/{n_epochs}  loss={loss.item():.6f}{extra}")
+    if ema is not None:
+        # Use EMA weights for inference (standard CFM/diffusion recipe).
+        ema.copy_to(model)
     return model, losses
 
 
@@ -195,10 +207,19 @@ def main():
     p.add_argument("--lr", type=float, default=2e-3)
     p.add_argument("--hidden-dim", type=int, default=512)
     p.add_argument("--n-layers", type=int, default=6)
-    p.add_argument("--arch", choices=["v1", "v2"], default="v1",
-                  help="v1 = original MLP, v2 = Fourier time + residual + LN")
+    p.add_argument("--arch", choices=["v1", "v2", "v3"], default="v1",
+                  help="v1 = original MLP, v2 = Fourier time + residual + LN, "
+                       "v3 = spatial RFF + FiLM-conditioned ResMLP")
     p.add_argument("--n-time-freqs", type=int, default=16,
-                  help="Fourier time-embedding frequencies (v2 only)")
+                  help="Fourier time-embedding frequencies (v2/v3).")
+    p.add_argument("--n-spatial-freqs", type=int, default=16,
+                  help="Random Fourier features for spatial input (v3 only).")
+    p.add_argument("--sigma-x", type=float, default=5.0,
+                  help="RFF bandwidth for spatial input (v3 only). Higher "
+                       "= sharper spatial detail; tune on {1, 2, 5, 10, 20}.")
+    p.add_argument("--ema-decay", type=float, default=0.0,
+                  help="EMA decay for inference weights. 0 disables; "
+                       "0.999 is the standard CFM/diffusion choice.")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--delta", type=float, default=0.05)
     p.add_argument("--n-cycles", type=int, default=300)
@@ -279,7 +300,9 @@ def main():
         print(f"loading cached model from {cache}  (arch={args.arch})")
         model = build_model(arch=args.arch, hidden_dim=args.hidden_dim,
                             n_layers=args.n_layers,
-                            n_time_freqs=args.n_time_freqs).to(device)
+                            n_time_freqs=args.n_time_freqs,
+                            n_spatial_freqs=args.n_spatial_freqs,
+                            sigma_x=args.sigma_x).to(device)
         model.load_state_dict(torch.load(cache, map_location=device))
         model.eval()
     else:
@@ -291,6 +314,8 @@ def main():
             sample_target, args.epochs, args.batch_size, args.lr,
             args.hidden_dim, args.n_layers, args.delta, args.seed,
             arch=args.arch, n_time_freqs=args.n_time_freqs,
+            n_spatial_freqs=args.n_spatial_freqs, sigma_x=args.sigma_x,
+            ema_decay=args.ema_decay,
             nfz_center=args.nfz_center, nfz_radius=args.nfz_radius,
             nfz_margin=args.nfz_margin, nfz_lambda=args.nfz_lambda,
             nfz_steps=args.nfz_steps,
@@ -340,6 +365,9 @@ def main():
         "method_kind": "ot_cfm",
         "arch": str(args.arch),
         "n_time_freqs": int(args.n_time_freqs),
+        "n_spatial_freqs": int(args.n_spatial_freqs),
+        "sigma_x": float(args.sigma_x),
+        "ema_decay": float(args.ema_decay),
         "delta": float(args.delta),
         "n_cycles": int(args.n_cycles),
         "pts_per_cycle": int(args.pts_per_cycle),
