@@ -52,6 +52,7 @@ SEEDS=(21 42 63)
 # ---------------------------------------------------------------------------
 ROOT=results
 METHODS=(toes nonuniform_erg opt_transport sac
+         sac_velpen00 sac_velpen010 sac_velpen020
          fmec_stein fmec_sinkhorn
          otcfm
          otcfm_nfz_l5

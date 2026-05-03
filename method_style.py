@@ -13,6 +13,10 @@ METHOD_COLOR = {
     "nonuniform_erg": "#2ca02c",
     "opt_transport":  "#d62728",
     "sac":            "#9467bd",
+    # SAC kinematic-regulariser sweep (run_sac_velpen.sh)
+    "sac_velpen00":   "#7f7f7f",   # beta=0 -- sanity / no penalty
+    "sac_velpen010":  "#9467bd",   # beta=0.1
+    "sac_velpen020":  "#5e2f8c",   # beta=0.2 -- darker purple
     # OT-CFM family
     "otcfm":          "#ff7f0e",
     # legacy short tags (kept so older result dirs still render correctly)
@@ -35,6 +39,10 @@ METHOD_LABEL = {
     "nonuniform_erg": "NonUniformErg",
     "opt_transport":  "OT",
     "sac":            "SAC",
+    # SAC velocity-penalty sweep
+    "sac_velpen00":   r"SAC ($\beta{=}0$)",
+    "sac_velpen010":  r"SAC ($\beta{=}0.1$)",
+    "sac_velpen020":  r"SAC ($\beta{=}0.2$)",
     # OT-CFM family
     "otcfm":          "OT-CFM",
     # legacy short tags
