@@ -393,7 +393,7 @@ def _make_sac_env_class():
 
         def __init__(self, rate_map, grid_size=50, max_steps=10000,
                      altitude=0.1, comm_range=0.18, n_devices=25,
-                     buf_cap=20.0):
+                     buf_cap=20.0, vel_penalty=0.0):
             super().__init__()
             self.rate_map = rate_map
             self.grid_size = grid_size
@@ -403,6 +403,11 @@ def _make_sac_env_class():
             self.rho = rate_map.rho
             self.n_devices_target = n_devices
             self.buf_cap = buf_cap
+            # Quadratic action-norm penalty in the reward, in spirit of the
+            # OT-CFM +E penalty: discourages always-max-step actions so the
+            # policy doesn't trivially fly fast in circles. Set to 0 to
+            # recover the original (no kinematic regularisation) behaviour.
+            self.vel_penalty = float(vel_penalty)
             self.action_space = spaces.Box(-1.0, 1.0, (2,), dtype=np.float32)
             self.observation_space = spaces.Box(
                 -1.0, 1.0, (self.TOP_K * 4 + 5,), dtype=np.float32)
@@ -536,8 +541,14 @@ def _make_sac_env_class():
                 self._stay = 0
             self._prev_cell = cell
             stay_p = 0.02 * max(0, self._stay - 10)
+            # Quadratic velocity (action-norm) penalty — matched in spirit
+            # to the +E term in OT-CFM. Drives the policy toward smaller
+            # actions when they are sufficient, suppressing the L≈18 km
+            # path-length pathology of the unregularised reward.
+            vel_pen = self.vel_penalty * (vx * vx + vy * vy)
             r = float(np.clip(0.3 * col + 0.5 * shaping - stay_p
-                              - 0.001 * float(moved), -2.0, 5.0))
+                              - 0.001 * float(moved) - vel_pen,
+                              -2.0, 5.0))
             self.steps += 1
             done = bool(self.steps >= self.max_steps
                         or float(self.buf.sum())
@@ -559,17 +570,19 @@ class SACTrajectoryGenerator:
     name = "sac"
 
     def __init__(self, rate_map, grid_size=50, comm_range=0.18,
-                 train_steps=200_000):
+                 train_steps=200_000, vel_penalty=0.0):
         self.rate_map = rate_map
         self.grid_size = grid_size
         self.comm_range = comm_range
         self.train_steps = train_steps
+        self.vel_penalty = float(vel_penalty)
         self.model = None
         self._EnvCls = _make_sac_env_class()
 
     def _make_env(self):
         return self._EnvCls(self.rate_map, self.grid_size,
-                            max_steps=10_000, comm_range=self.comm_range)
+                            max_steps=10_000, comm_range=self.comm_range,
+                            vel_penalty=self.vel_penalty)
 
     def train(self, seed=42):
         from stable_baselines3 import SAC

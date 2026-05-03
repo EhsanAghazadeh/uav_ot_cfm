@@ -195,9 +195,11 @@ def plan_sac(args):
                              nfz_center=_nfz_c, nfz_radius=_nfz_r)
     gen = SACTrajectoryGenerator(rate_map, grid_size=args.sac_grid_size,
                                  comm_range=args.sac_comm_range,
-                                 train_steps=args.sac_train_steps)
+                                 train_steps=args.sac_train_steps,
+                                 vel_penalty=args.sac_vel_penalty)
     print(f"training SAC  : {args.sac_train_steps} steps "
-          f"(grid={args.sac_grid_size}, comm_range={args.sac_comm_range})")
+          f"(grid={args.sac_grid_size}, comm_range={args.sac_comm_range}, "
+          f"vel_penalty={args.sac_vel_penalty:.3f})")
     t0 = time.perf_counter()
     gen.train(seed=args.seed)
     train_s = time.perf_counter() - t0
@@ -214,6 +216,7 @@ def plan_sac(args):
         "sac_grid_size": int(args.sac_grid_size),
         "sac_comm_range": float(args.sac_comm_range),
         "sac_train_steps": int(args.sac_train_steps),
+        "sac_vel_penalty": float(args.sac_vel_penalty),
         "train_wall_clock_s": float(train_s),
         "rollout_wall_clock_s": float(rollout_s),
         "dt_s": float(args.dt),
@@ -276,6 +279,11 @@ def main():
     p.add_argument("--sac-grid-size", type=int, default=50)
     p.add_argument("--sac-comm-range", type=float, default=0.18)
     p.add_argument("--sac-train-steps", type=int, default=200_000)
+    p.add_argument("--sac-vel-penalty", type=float, default=0.0,
+                  help="Quadratic action-norm penalty in the SAC reward, "
+                       "matched in spirit to OT-CFM +E. 0 reproduces the "
+                       "original (path-length-pathological) reward; 0.05-0.30 "
+                       "produces realistic UAV kinematics. Tune per problem.")
 
     # NFZ-aware target (used when running NFZ-condition baselines)
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
