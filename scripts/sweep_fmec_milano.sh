@@ -9,12 +9,16 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=12:00:00
-#SBATCH --array=0-5
+#SBATCH --array=0-11
 #
-# FMEC Stein + Sinkhorn × seeds (2×3 = 6 tasks). Requires requirements_fmec.txt.
+# FMEC Stein + Sinkhorn × {3 seeds} × {normal, NFZ-masked} = 12 tasks.
+# Outputs:
+#   tasks 0–5   : MASK_NFZ=0 -> results/${V}_seed${S}
+#   tasks 6–11  : MASK_NFZ=1 -> results_nfz_masked/${V}_seed${S}
 #
 # Submit: sbatch scripts/sweep_fmec_milano.sh
-# NFZ masked target: sbatch --export=ALL,MASK_NFZ=1 scripts/sweep_fmec_milano.sh
+# (the legacy --export=ALL,MASK_NFZ=1 is no longer needed; both
+#  conditions are launched together.)
 
 set -euo pipefail
 mkdir -p slurm_output
@@ -28,9 +32,15 @@ SEEDS=(21 42 63)
 GRID="${MILANO_GRID:-data/milano_grid_corrected.npy}"
 
 i=${SLURM_ARRAY_TASK_ID:-0}
-nv=${#VARIANTS[@]}
-V=${VARIANTS[$((i % nv))]}
-S=${SEEDS[$((i / nv))]}
+nv=${#VARIANTS[@]}            # 2
+ns=${#SEEDS[@]}               # 3
+PER_COND=$((nv * ns))         # 6
+
+# First 6 tasks: unmasked. Next 6: NFZ-masked target.
+M=$((i / PER_COND))           # 0 = normal, 1 = masked
+local_i=$((i % PER_COND))
+V=${VARIANTS[$((local_i % nv))]}
+S=${SEEDS[$((local_i / nv))]}
 
 FMEC_DT="${FMEC_DT:-0.05}"
 FMEC_TSTEPS="${FMEC_TSTEPS:-200}"
@@ -39,15 +49,18 @@ STEIN_STEP="${STEIN_STEP:-0.01}"
 SINK_ITERS="${SINK_ITERS:-200}"
 SINK_STEP="${SINK_STEP:-0.005}"
 
-OUT="results/${V}_seed${S}"
+NFZ_FLAGS=()
+if [[ "$M" == "1" ]]; then
+  NFZ_FLAGS=(--mask-nfz-target --nfz-center 0.19 0.03 --nfz-radius 0.10)
+  OUT="results_nfz_masked/${V}_seed${S}"
+  COND="masked"
+else
+  OUT="results/${V}_seed${S}"
+  COND="normal"
+fi
 mkdir -p "$OUT"
 
-NFZ_FLAGS=()
-if [[ "${MASK_NFZ:-0}" == "1" ]]; then
-  NFZ_FLAGS=(--mask-nfz-target --nfz-center 0.19 0.03 --nfz-radius 0.10)
-fi
-
-echo "[sweep_fmec] task=$i method=$V seed=$S out=$OUT"
+echo "[sweep_fmec] task=$i  cond=$COND  method=$V  seed=$S  out=$OUT"
 
 if [[ "$V" == "fmec_stein" ]]; then
   python run_baseline_milano_v1.py --method fmec_stein \
