@@ -130,8 +130,31 @@ def coverage_metrics(pos_unit, dt, target_smooth_pmf, K, hk, lam, phik,
 # Energy / kinematics on NATIVE trajectory (no resampling)
 # ---------------------------------------------------------------------------
 def kinematics_and_energy(pos, times, domain_size: float,
-                          v_clip=(0.01, 100.0)):
-    """Return total time, arc length, speeds, mean/total Zeng energy."""
+                          v_clip=(0.01, 100.0),
+                          v_clip_realistic=None):
+    """Return total time, arc length, speeds, mean/total Zeng energy.
+
+    Parameters
+    ----------
+    v_clip : (vmin, vmax)
+        The numerical-guard clip: caps the V^3 parasitic term beyond the
+        Zeng model's extrapolation range. Default (0.01, 100) m/s.
+        These values appear in the headline P_mean_W / E_total_kJ.
+    v_clip_realistic : float or None
+        Optional second clip at a physically realistic UAV cap (e.g.
+        30 m/s). When set, two extra fields are returned:
+            P_mean_W_realistic, E_total_kJ_realistic
+        These quantify the energy under the assumption that no UAV can
+        physically exceed the cap; samples requesting V > cap contribute
+        Zeng power *at* the cap rather than at the requested V. The gap
+        from the headline column reveals teleport-pathology baselines.
+        The fraction of samples above the cap (frac_v_over_cap) is also
+        reported.
+
+    Returns
+    -------
+    dict with mission/kinematic fields and one or two energy column sets.
+    """
     pos = np.asarray(pos, dtype=np.float64)
     times = np.asarray(times, dtype=np.float64)
     if pos.shape[0] < 2:
@@ -143,18 +166,17 @@ def kinematics_and_energy(pos, times, domain_size: float,
     step_m = np.linalg.norm(dx, axis=1) * domain_size  # metres
     v_mps = step_m / dt                                 # m/s per step
 
-    # Zeng power per step. We use the canonical RotaryWingEnergyModel
-    # (numpy power-curve). v_clip handles teleporting baselines whose
-    # native output has effectively-infinite-speed segments.
     em = RotaryWingEnergyModel()
+
+    # Headline (numerical-guard) cap
     v_clipped = np.clip(v_mps, v_clip[0], v_clip[1])
-    P_steps = np.array([em.power(v) for v in v_clipped])  # W
-    E_steps = P_steps * dt                                  # J per step
+    P_steps = np.array([em.power(v) for v in v_clipped])
+    E_steps = P_steps * dt
+    E_total_J = float(E_steps.sum())
 
     T_total = float(times[-1] - times[0])
     arc_length_m = float(step_m.sum())
-    E_total_J = float(E_steps.sum())
-    return {
+    out = {
         "T_total_s": T_total,
         "N_samples": int(pos.shape[0]),
         "arc_length_m": arc_length_m,
@@ -164,6 +186,20 @@ def kinematics_and_energy(pos, times, domain_size: float,
         "P_mean_W": float(E_total_J / max(T_total, 1e-12)),
         "E_per_metre_J": float(E_total_J / max(arc_length_m, 1e-12)),
     }
+
+    if v_clip_realistic is not None and v_clip_realistic > 0:
+        cap = float(v_clip_realistic)
+        v_real = np.clip(v_mps, v_clip[0], cap)
+        P_real = np.array([em.power(v) for v in v_real])
+        E_real = (P_real * dt).sum()
+        frac_over = float((v_mps > cap).mean())
+        out["P_mean_W_realistic"] = float(E_real / max(T_total, 1e-12))
+        out["E_total_kJ_realistic"] = float(E_real / 1000.0)
+        out["E_per_metre_J_realistic"] = float(E_real / max(arc_length_m, 1e-12))
+        out["frac_v_over_realistic_cap"] = frac_over
+        out["v_clip_realistic"] = cap
+
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +394,11 @@ def main():
     p.add_argument("--v-clip-max", type=float, default=100.0,
                   help="Cap instantaneous speed before applying Zeng power "
                        "(handles teleporting baselines). Default 100 m/s.")
+    p.add_argument("--v-clip-realistic", type=float, default=None,
+                  help="If set (e.g. 30.0 m/s = typical rotorcraft max "
+                       "cruise), also report a 'realistic' energy column "
+                       "computed at this cap. The gap to the headline "
+                       "column reveals teleport pathology in baselines.")
     p.add_argument("--time-scale", type=float, default=1.0,
                   help="Multiply native trajectory times by this factor "
                        "before computing kinematics. Use with --domain-size "
@@ -431,7 +472,8 @@ def main():
         cov = coverage_metrics(pos_unit, dt_native, target_smooth_pmf,
                                K, hk, lam, phik, sigma=args.smooth_sigma)
         kin = kinematics_and_energy(pos, times, args.domain_size,
-                                    v_clip=(0.01, args.v_clip_max))
+                                    v_clip=(0.01, args.v_clip_max),
+                                    v_clip_realistic=args.v_clip_realistic)
 
         rec_out = {"method": method, "path": path, **cov, **kin}
 

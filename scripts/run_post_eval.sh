@@ -42,6 +42,7 @@ source .venv/bin/activate
 GRID="data/milano_grid_corrected.npy"
 DOMAIN_M=200.0       # physical extent of [-1,1] in metres
 TIME_SCALE=10.0      # multiplies native trajectory times
+V_CAP_REALISTIC=30.0 # typical rotorcraft max cruise (m/s); reveals teleport
 NFZ_C="0.19 0.03"
 NFZ_R="0.10"
 SEEDS=(21 42 63)
@@ -74,6 +75,7 @@ if [ -n "$ARGS" ]; then
     python eval_fair.py $ARGS \
         --milano-grid "$GRID" \
         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
+        --v-clip-realistic $V_CAP_REALISTIC \
         --nfz-center $NFZ_C --nfz-radius $NFZ_R \
         --out-dir "${ROOT}/fair_metrics_rescaled"
     python plot_pareto.py \
@@ -103,6 +105,7 @@ if [ -n "$ARGS" ]; then
     python eval_fair.py $ARGS \
         --milano-grid "$GRID" \
         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
+        --v-clip-realistic $V_CAP_REALISTIC \
         --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
         --out-dir "${ROOT_M}/fair_metrics_rescaled"
     python plot_pareto.py \
@@ -135,5 +138,24 @@ echo "=== Block C: amortization table ==="
 python eval_amortization.py \
     --root results \
     --out results/fair_metrics_rescaled/amortization.tex
+
+
+# ---------------------------------------------------------------------------
+# Block D -- per-method velocity distribution (teleport-pathology figure)
+# ---------------------------------------------------------------------------
+echo "=== Block D: velocity distribution ==="
+ARGS=""
+for m in "${METHODS[@]}"; do
+    for s in "${SEEDS[@]}"; do
+        T="${ROOT}/${m}_seed${s}/trajectory.npz"
+        [ -f "$T" ] && ARGS="$ARGS --traj ${m}:${T}"
+    done
+done
+if [ -n "$ARGS" ]; then
+    python plot_velocity_distribution.py $ARGS \
+        --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
+        --v-cap-realistic $V_CAP_REALISTIC \
+        --out-dir "${ROOT}/velocity_dist"
+fi
 
 echo "post_eval complete"
