@@ -1,0 +1,7 @@
+# Optional: Flow Matching Ergodic Coverage (run_baseline_milano_v1.py fmec_*).
+# Install on top of requirements.txt:
+#   pip install -r requirements_fmec.txt
+
+lqrax>=0.0.4
+ott-jax>=0.4.0
+tqdm>=4.66
