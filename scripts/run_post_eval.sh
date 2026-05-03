@@ -134,10 +134,23 @@ fi
 # ---------------------------------------------------------------------------
 # Block C -- amortization wall-clock table
 # ---------------------------------------------------------------------------
-echo "=== Block C: amortization table ==="
+echo "=== Block C: amortization + sampling-protocol tables ==="
 python eval_amortization.py \
     --root results \
     --out results/fair_metrics_rescaled/amortization.tex
+if [ -f "results/fair_metrics_rescaled/per_run.json" ]; then
+    python eval_sampling_table.py \
+        --per-run results/fair_metrics_rescaled/per_run.json \
+        --root results \
+        --out results/fair_metrics_rescaled/sampling_protocol.tex
+fi
+if [ -f "results_nfz_masked/fair_metrics_rescaled/per_run.json" ]; then
+    python eval_sampling_table.py \
+        --per-run results_nfz_masked/fair_metrics_rescaled/per_run.json \
+        --root results_nfz_masked \
+        --label tab:sampling_nfz_masked \
+        --out results_nfz_masked/fair_metrics_rescaled/sampling_protocol.tex
+fi
 
 
 # ---------------------------------------------------------------------------

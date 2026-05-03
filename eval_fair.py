@@ -302,9 +302,13 @@ HEADLINE_COLUMNS = [
     ("density_corr",  r"$\rho\uparrow$"),
     ("P_mean_W",      r"$\bar P$ (W)$\downarrow$"),
     ("E_total_kJ",    r"$E_\text{tot}$ (kJ)"),
-    ("T_total_s",     r"$T_\text{tot}$ (s)"),
     ("arc_length_m",  r"$L$ (m)"),
     ("E_per_metre_J", r"$E/L$ (J/m)$\downarrow$"),
+    # T_total_s is intentionally NOT in the headline columns: it is a
+    # function of the per-method sampling rate (T = N * dt, with dt
+    # method-specific) and therefore not a fair cross-method axis.
+    # The sampling protocol (N, dt, T_reported, T_realizable) is
+    # reported separately by eval_sampling_table.py.
 ]
 
 NFZ_COLUMNS = [
@@ -323,7 +327,10 @@ def render_headline_latex(agg, method_order, label="tab:fair"):
     out.append(r"\begin{table}[t]")
     out.append(r"\caption{Fair comparison on Milano (mean $\pm$ std over seeds, "
                r"computed on each method's native trajectory). "
-               r"$\bar P$ is the headline energy metric. \textbf{Bold} = best per column.}")
+               r"$\bar P$ is the headline energy metric. \textbf{Bold} = best per column. "
+               r"Total mission time $T$ is reported separately in the sampling-protocol "
+               r"table (Appendix), since $T = N \cdot \Delta t$ with $\Delta t$ a per-method "
+               r"sampling-rate convention rather than a property of the planned trajectory.}")
     out.append(r"\label{" + label + "}")
     out.append(r"\centering\small")
     out.append(r"\begin{tabular}{l" + "c" * n + "}")
