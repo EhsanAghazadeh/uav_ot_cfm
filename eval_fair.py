@@ -358,6 +358,13 @@ def main():
     p.add_argument("--v-clip-max", type=float, default=100.0,
                   help="Cap instantaneous speed before applying Zeng power "
                        "(handles teleporting baselines). Default 100 m/s.")
+    p.add_argument("--time-scale", type=float, default=1.0,
+                  help="Multiply native trajectory times by this factor "
+                       "before computing kinematics. Use with --domain-size "
+                       "to rescale the synthetic 8 m / 0.01 s lab-scale "
+                       "experiments to a realistic UAV mission scale "
+                       "(e.g. --domain-size 200 --time-scale 10 maps every "
+                       "method onto a 200 m x 200 m patrol).")
     p.add_argument("--method-order", nargs="*", default=None,
                   help="Optional explicit method order in tables.")
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
@@ -413,7 +420,7 @@ def main():
         xlim = (rec.domain[0], rec.domain[1])
         ylim = (rec.domain[2], rec.domain[3])
         pos = rec.pos
-        times = rec.times
+        times = rec.times * float(args.time_scale)
         dt_native = float(np.median(np.diff(times)))
 
         # Map to unit-box for Fourier metrics

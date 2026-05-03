@@ -156,6 +156,11 @@ def main():
                   help="If set, linearly rescale times so total horizon = "
                        "target-T (s) before resampling. Use with --resample-dt "
                        "to make all methods share N = target-T / resample-dt.")
+    p.add_argument("--time-scale", type=float, default=1.0,
+                  help="Multiply native times by this factor (applied after "
+                       "--target-T if both given). Pair with the eval_fair "
+                       "--time-scale and --domain-size for the rescaled "
+                       "UAV-mission protocol.")
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
                   metavar=("CX", "CY"),
                   help="No-fly disc centre in normalised coords (with "
@@ -183,6 +188,9 @@ def main():
         scale = args.target_T / max(native_T, 1e-12)
         times = times[0] + (times - times[0]) * scale
         print(f"rescale T     : {native_T:.3f}s -> {args.target_T}s  (×{scale:.4g})")
+    if args.time_scale != 1.0:
+        times = times * float(args.time_scale)
+        print(f"time-scale    : ×{args.time_scale:.4g}  (mission now {times[-1]-times[0]:.1f}s)")
     if args.resample_dt is not None and args.resample_dt > 0:
         T_total = float(times[-1] - times[0])
         n_new = max(2, int(round(T_total / args.resample_dt)) + 1)
