@@ -189,6 +189,10 @@ def kinematics_and_energy(pos, times, domain_size: float,
 
     if v_clip_realistic is not None and v_clip_realistic > 0:
         cap = float(v_clip_realistic)
+
+        # --- "Realistic-cap" power: reported mission time, V capped at cap.
+        #     Doesn't penalise the *time* the UAV would have needed to
+        #     physically execute a teleport -- only the per-step power.
         v_real = np.clip(v_mps, v_clip[0], cap)
         P_real = np.array([em.power(v) for v in v_real])
         E_real = (P_real * dt).sum()
@@ -198,6 +202,26 @@ def kinematics_and_energy(pos, times, domain_size: float,
         out["E_per_metre_J_realistic"] = float(E_real / max(arc_length_m, 1e-12))
         out["frac_v_over_realistic_cap"] = frac_over
         out["v_clip_realistic"] = cap
+
+        # --- "Realizable-execution" power: for each step that requests
+        #     V > cap, extend dt to step_m / cap so V = cap is achievable.
+        #     The mission time grows; energy is computed on the extended
+        #     trajectory. This is the honest cost of executing a discrete
+        #     /teleporting trajectory on a real UAV. Continuous methods are
+        #     unaffected (their dt is already long enough).
+        dt_real = np.maximum(dt, step_m / max(cap, 1e-9))
+        v_real_exec = step_m / np.maximum(dt_real, 1e-12)  # = cap on extended steps
+        v_real_exec = np.clip(v_real_exec, v_clip[0], cap)
+        P_real_exec = np.array([em.power(v) for v in v_real_exec])
+        E_real_exec = (P_real_exec * dt_real).sum()
+        T_real_exec = float(dt_real.sum())
+        out["T_realizable_s"] = T_real_exec
+        out["E_realizable_kJ"] = float(E_real_exec / 1000.0)
+        out["P_mean_W_realizable"] = float(E_real_exec / max(T_real_exec, 1e-12))
+        out["E_per_metre_J_realizable"] = float(
+            E_real_exec / max(arc_length_m, 1e-12))
+        # Time-extension factor: 1.0 = no teleport; >> 1 = heavy teleport.
+        out["realizable_time_factor"] = float(T_real_exec / max(T_total, 1e-12))
 
     return out
 

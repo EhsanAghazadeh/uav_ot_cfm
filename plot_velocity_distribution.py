@@ -97,17 +97,50 @@ def main():
     speeds = {m: np.concatenate(by_method[m]) for m in methods}
 
     # ---- Summary table ----
+    # We need per-step dt to compute realizable-execution metrics, so
+    # rebuild from records.
     cap_h = args.v_cap_headline
     cap_r = args.v_cap_realistic
     rows = []
-    print(f"\n{'method':<32s} {'median':>8s} {'99th':>10s} {'max':>10s}  "
-          f"{'frac>'+str(cap_r):>10s}  {'Pmean(c='+str(int(cap_h))+')':>14s}  "
-          f"{'Pmean(c='+str(int(cap_r))+')':>14s}")
-    print("-" * 105)
+
+    print(f"\n{'method':<32s} {'median':>8s} {'p99':>9s} {'max':>9s}  "
+          f"{'frac>'+str(int(cap_r)):>9s}  "
+          f"{'P(c='+str(int(cap_h))+')':>11s}  "
+          f"{'P(c='+str(int(cap_r))+')':>11s}  "
+          f"{'P_realiz':>11s}  {'T-factor':>9s}")
+    print("-" * 124)
+
+    # Recompute dt per method (concatenate seeds in the same order as speeds[m])
+    dts = {m: [] for m in methods}
+    for spec in args.traj:
+        m, path = spec.split(":", 1)
+        rec = TrajectoryRecord.from_npz(path)
+        ts = rec.times * float(args.time_scale)
+        dts[m].append(np.maximum(np.diff(ts), 1e-12))
+    dts = {m: np.concatenate(dts[m]) for m in methods}
+
     for m in methods:
         v = speeds[m]
-        Ph = power_with_cap(v, cap_h, em).mean()
-        Pr = power_with_cap(v, cap_r, em).mean()
+        dt = dts[m]
+        # Per-step distance in metres (V * dt)
+        step_m = v * dt
+        # Headline-cap power
+        Ph_steps = power_with_cap(v, cap_h, em)
+        Eh = float((Ph_steps * dt).sum())
+        Tt = float(dt.sum())
+        Ph = Eh / max(Tt, 1e-12)
+        # Realistic-cap power (V capped, dt unchanged)
+        Pr_steps = power_with_cap(v, cap_r, em)
+        Er = float((Pr_steps * dt).sum())
+        Pr = Er / max(Tt, 1e-12)
+        # Realizable-execution power (dt extended where V > cap)
+        dt_real = np.maximum(dt, step_m / max(cap_r, 1e-9))
+        v_real = step_m / np.maximum(dt_real, 1e-12)
+        Pre_steps = power_with_cap(v_real, cap_r, em)
+        Ere = float((Pre_steps * dt_real).sum())
+        Tre = float(dt_real.sum())
+        Pre = Ere / max(Tre, 1e-12)
+        T_factor = Tre / max(Tt, 1e-12)
         frac = float((v > cap_r).mean())
         row = {
             "method": m,
@@ -117,12 +150,16 @@ def main():
             "frac_v_over_realistic_cap": frac,
             f"P_mean_W_cap{int(cap_h)}": float(Ph),
             f"P_mean_W_cap{int(cap_r)}": float(Pr),
-            "teleport_factor": float(Ph / max(Pr, 1e-12)),
+            "P_mean_W_realizable": float(Pre),
+            "T_realizable_s": float(Tre),
+            "realizable_time_factor": float(T_factor),
+            "teleport_factor": float(Pre / max(Ph, 1e-12)),
         }
         rows.append(row)
         print(f"{m:<32s} {row['median_v_mps']:>8.2f} "
-              f"{row['p99_v_mps']:>10.2f} {row['max_v_mps']:>10.2f}  "
-              f"{frac:>10.3f}  {Ph:>14.1f}  {Pr:>14.1f}")
+              f"{row['p99_v_mps']:>9.2f} {row['max_v_mps']:>9.2f}  "
+              f"{frac:>9.3f}  {Ph:>11.1f}  {Pr:>11.1f}  "
+              f"{Pre:>11.1f}  {T_factor:>9.2f}")
 
     with open(os.path.join(args.out_dir, "velocity_summary.json"), "w") as f:
         json.dump(rows, f, indent=2)
@@ -169,9 +206,12 @@ def main():
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(fontsize=7, loc="lower right", framealpha=0.95)
 
-    # Panel 3: bar chart of teleport factor (Pmean cap_h / Pmean cap_r)
+    # Panel 3: bar chart of *realizable* time-extension factor
+    # (T_realizable / T_reported). =1 for continuous methods; >> 1 for
+    # teleporting baselines, since their reported mission time is too
+    # short to physically execute the trajectory.
     ax = axes[2]
-    factors = [r["teleport_factor"] for r in rows]
+    factors = [r["realizable_time_factor"] for r in rows]
     colors  = [_color(m) for m in methods]
     labels  = [_label(m) for m in methods]
     bars = ax.barh(range(len(methods)), factors,
@@ -179,14 +219,16 @@ def main():
     ax.set_yticks(range(len(methods)))
     ax.set_yticklabels(labels, fontsize=8)
     ax.invert_yaxis()
-    ax.axvline(1.0, color="#222", ls="--", lw=1.0)
+    ax.axvline(1.0, color="#222", ls="--", lw=1.0,
+               label="continuous (no teleport)")
     ax.set_xscale("log")
-    ax.set_xlabel(f"$P(V_\\max=100) / P(V_\\max={cap_r:g})$")
-    ax.set_title("Teleport factor")
+    ax.set_xlabel(rf"$T_\mathrm{{realizable}} / T_\mathrm{{reported}}$ at "
+                  rf"$V_\max{{=}}{cap_r:g}$ m/s")
+    ax.set_title("Time-extension factor")
     ax.grid(True, which="both", alpha=0.3, axis="x")
-    for i, (b, f_) in enumerate(zip(bars, factors)):
-        ax.text(f_, i, f"  {f_:.2f}",
-                va="center", ha="left", fontsize=8)
+    for i, f_ in enumerate(factors):
+        ax.text(f_, i, f"  {f_:.2f}", va="center", ha="left", fontsize=8)
+    ax.legend(fontsize=7, loc="lower right")
 
     fig.tight_layout()
     out_png = os.path.join(args.out_dir, "velocity_distribution.png")
