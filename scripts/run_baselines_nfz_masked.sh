@@ -37,7 +37,8 @@ M=${METHODS[$((i / 3))]}
 S=${SEEDS[$((i % 3))]}
 OUT=results_nfz_masked/${M}_seed${S}
 
-NFZ_FLAGS="--nfz-center 0.19 0.03 --nfz-radius 0.10 --mask-nfz-target"
+# NFZ_FLAGS="--nfz-center 0.19 0.03 --nfz-radius 0.10 --mask-nfz-target"
+NFZ_FLAGS="--nfz-center -0.6 -0.6 --nfz-radius 0.10 --mask-nfz-target"
 
 echo "[baselines_nfz_masked] task=$i  method=$M  seed=$S  out=$OUT"
 
@@ -51,20 +52,20 @@ case "$M" in
         ;;
     nonuniform_erg)
         python run_baseline_milano.py --method nonuniform_erg \
-            --num-intervals 64 --points-per-interval 200 --dt 0.1 \
+            --num-intervals 64 --points-per-interval 200 --dt 0.01 \
             $NFZ_FLAGS \
             --seed $S --out-dir $OUT
         ;;
     opt_transport)
         python run_baseline_milano.py --method opt_transport \
-            --num-points 25600 --dt 0.1 \
+            --num-points 25600 --dt 0.01 \
             $NFZ_FLAGS \
             --seed $S --out-dir $OUT
         ;;
     sac)
         python run_baseline_milano.py --method sac \
             --num-points 25600 --sac-train-steps 500000 \
-            --sac-grid-size 50 --sac-comm-range 0.18 --dt 0.1 \
+            --sac-grid-size 50 --sac-comm-range 0.18 --dt 0.01 \
             $NFZ_FLAGS \
             --seed $S --out-dir $OUT
         ;;

@@ -437,6 +437,13 @@ def main():
                        "experiments to a realistic UAV mission scale "
                        "(e.g. --domain-size 200 --time-scale 10 maps every "
                        "method onto a 200 m x 200 m patrol).")
+    p.add_argument("--method-time-scale", action="append", default=[],
+                  metavar="METHOD:SCALE",
+                  help="Per-method time-scale override (repeatable). "
+                       "Syntax: METHOD:SCALE, e.g. --method-time-scale toes:2.0. "
+                       "Overrides --time-scale for the named method only. "
+                       "Use for dt-dependent methods (TOES, FMEC) whose "
+                       "native dt must be preserved while normalising T_eval.")
     p.add_argument("--method-order", nargs="*", default=None,
                   help="Optional explicit method order in tables.")
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
@@ -484,6 +491,15 @@ def main():
           f"{'erg':>9} {'L1':>7} {'rho':>7}")
     print("-" * 110)
 
+    method_ts_overrides: dict = {}
+    for spec in args.method_time_scale:
+        if ":" not in spec:
+            raise SystemExit(f"--method-time-scale must be METHOD:SCALE (got {spec})")
+        mname, mscale = spec.rsplit(":", 1)
+        method_ts_overrides[mname] = float(mscale)
+    if method_ts_overrides:
+        print(f"Per-method time-scale overrides: {method_ts_overrides}")
+
     for spec in args.traj:
         if ":" not in spec:
             raise SystemExit(f"--traj must be method:path (got {spec})")
@@ -492,7 +508,8 @@ def main():
         xlim = (rec.domain[0], rec.domain[1])
         ylim = (rec.domain[2], rec.domain[3])
         pos = rec.pos
-        times = rec.times * float(args.time_scale)
+        ts = method_ts_overrides.get(method, args.time_scale)
+        times = rec.times * float(ts)
         dt_native = float(np.median(np.diff(times)))
 
         # Map to unit-box for Fourier metrics

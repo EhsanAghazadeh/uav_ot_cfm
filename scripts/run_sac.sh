@@ -24,5 +24,5 @@ OUT=results/sac_seed${SEED}
 
 python run_baseline_milano.py --method sac \
     --num-points 25600 --sac-train-steps 500000 \
-    --sac-grid-size 50 --sac-comm-range 0.18 --dt 0.1 \
+    --sac-grid-size 50 --sac-comm-range 0.18 --dt 0.01 \
     --seed $SEED --out-dir $OUT

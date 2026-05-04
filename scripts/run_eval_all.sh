@@ -90,6 +90,7 @@ done
 if [ -n "$FAIR_ARGS" ]; then
     python eval_fair.py $FAIR_ARGS \
         --milano-grid data/milano_grid_corrected.npy \
+        --method-time-scale toes:2.0 \
         --nfz-center 0.19 0.03 --nfz-radius 0.10 \
         --out-dir results/fair_metrics
     python plot_pareto.py \

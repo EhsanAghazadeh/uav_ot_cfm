@@ -75,6 +75,9 @@ if [ -n "$ARGS" ]; then
     python eval_fair.py $ARGS \
         --milano-grid "$GRID" \
         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
+        --method-time-scale toes:2.0 \
+        --method-time-scale fmec_stein:7.94 \
+        --method-time-scale fmec_sinkhorn:7.94 \
         --v-clip-realistic $V_CAP_REALISTIC \
         --nfz-center $NFZ_C --nfz-radius $NFZ_R \
         --out-dir "${ROOT}/fair_metrics_rescaled"
@@ -105,6 +108,9 @@ if [ -n "$ARGS" ]; then
     python eval_fair.py $ARGS \
         --milano-grid "$GRID" \
         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
+        --method-time-scale toes:2.0 \
+        --method-time-scale fmec_stein:7.94 \
+        --method-time-scale fmec_sinkhorn:7.94 \
         --v-clip-realistic $V_CAP_REALISTIC \
         --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
         --out-dir "${ROOT_M}/fair_metrics_rescaled"
