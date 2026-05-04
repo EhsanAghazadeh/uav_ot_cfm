@@ -213,7 +213,7 @@ def _build_alpha_pdf_and_H(rate_lut, r_grid, theta_grid, alpha_grid,
 
     s_arr = s_grid[None, :]            # (1, n_s)
     alpha_arr = alpha_grid[:, None]    # (n_alpha, 1)
-    r = (rho - delta) * s_arr + delta  # (1, n_s)
+    r = (rho - delta) * s_arr**2 + delta  # G(s) quadratic, (1, n_s)
     theta = (phi_max * s_arr + alpha_arr) % (2 * np.pi)  # (n_alpha, n_s)
     r_b = np.broadcast_to(r, theta.shape)
 
@@ -226,7 +226,8 @@ def _build_alpha_pdf_and_H(rate_lut, r_grid, theta_grid, alpha_grid,
            + (1 - fr) * ft * L[i_r, i_t + 1]
            + fr * (1 - ft) * L[i_r + 1, i_t]
            + fr * ft * L[i_r + 1, i_t + 1])
-    integrand = val * r_b * (rho - delta)         # (n_alpha, n_s)
+    # Jacobian: dr/ds = 2(rho-delta)*s for G(s) = (rho-delta)*s^2 + delta
+    integrand = val * r_b * 2.0 * (rho - delta) * s_arr  # (n_alpha, n_s)
 
     f_A = np.trapezoid(integrand, dx=ds, axis=1) if hasattr(np, "trapezoid") \
         else np.trapz(integrand, dx=ds, axis=1)
@@ -271,7 +272,7 @@ class NonUniformErgodic:
         self.rho, self.delta = rate_map.rho, rate_map.delta
         self.phi_max = phi_max
         rate_map.build_rate_lut()
-        self._alpha_grid = np.linspace(0, 2 * np.pi, alpha_res)
+        self._alpha_grid = np.linspace(-0.1 * np.pi, 2 * np.pi, alpha_res)
         self._s_grid = np.linspace(0, 1, s_res)
         self._alpha_pdf, self._H_lut = _build_alpha_pdf_and_H(
             rate_map._rate_lut, rate_map._r_grid, rate_map._theta_grid,
@@ -300,16 +301,18 @@ class NonUniformErgodic:
         for _ in range(num_intervals):
             u = rng.random()
             alpha = _inv_cdf_sample(u, self._alpha_cdf, self._alpha_grid)
-            ai = max(min(int(alpha / (2 * np.pi) * (n_alpha - 1)), n_alpha - 1), 0)
+            alpha_min = self._alpha_grid[0]
+            alpha_span = self._alpha_grid[-1] - alpha_min
+            ai = max(min(int((alpha - alpha_min) / alpha_span * (n_alpha - 1)), n_alpha - 1), 0)
             H_col = self._H_lut[:, ai]
             for i in range(points_per_interval):
                 s = _binsearch_inv(i / points_per_interval, H_col, self._s_grid)
-                out_r.append((self.rho - self.delta) * s + self.delta)
+                out_r.append((self.rho - self.delta) * s**2 + self.delta)
                 out_t.append((self.phi_max * s + alpha) % (2 * np.pi))
             for i in range(points_per_interval):
                 s = _binsearch_inv(1.0 - i / points_per_interval,
                                    H_col, self._s_grid)
-                out_r.append((self.rho - self.delta) * s + self.delta)
+                out_r.append((self.rho - self.delta) * s**2 + self.delta)
                 out_t.append((self.phi_max * s + alpha) % (2 * np.pi))
         r = np.asarray(out_r); t = np.asarray(out_t)
         return np.column_stack([r * np.cos(t), r * np.sin(t)])
