@@ -25,7 +25,7 @@ from fair_comparison import save_trajectory_npz
 from latent_trajectory import radial_trajectory, sample_uniform_annulus
 from ot_cfm import (VelocityNet, build_model, cfm_loss, transport,
                     transport_train, nfz_penalty, energy_penalty,
-                    acceleration_penalty, ModelEMA)
+                    acceleration_penalty, step_penalty, ModelEMA)
 
 
 def make_grid_sampler(grid_path, smooth_sigma, eps_floor,
@@ -74,7 +74,7 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
               nfz_lambda=0.0, nfz_steps=8, nfz_reject_targets=False,
               energy_lambda=0.0, energy_chunk_size=64, energy_steps=8,
               energy_n_cycles=50, energy_pts_per_cycle=200,
-              acc_lambda=0.0,
+              acc_lambda=0.0, vel_lambda=0.0,
               domain_size=8.0, device="cpu"):
     torch.manual_seed(seed)
     model = build_model(arch=arch, hidden_dim=hidden_dim, n_layers=n_layers,
@@ -97,7 +97,8 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
 
     energy_on = energy_lambda > 0.0
     acc_on = acc_lambda > 0.0
-    kin_on = energy_on or acc_on
+    vel_on = vel_lambda > 0.0
+    kin_on = energy_on or acc_on or vel_on
     if kin_on:
         pos_lat_full, t_lat_full, _ = radial_trajectory(
             n_cycles=energy_n_cycles, points_per_cycle=energy_pts_per_cycle,
@@ -120,6 +121,9 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
             print(f"  Acc on: lambda={acc_lambda:.4g}  chunk={energy_chunk_size}"
                   f"  steps={energy_steps}  dt_s={dt_s:.5g}  "
                   f"domain_size={domain_size}")
+        if vel_on:
+            print(f"  Vel on: lambda={vel_lambda:.4g}  chunk={energy_chunk_size}"
+                  f"  steps={energy_steps}  domain_size={domain_size}")
 
     def _resample_outside_nfz(x, c, r, sampler, base_seed):
         """Replace any x_i inside disc B(c, r) with fresh samples."""
@@ -135,7 +139,7 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
             x[mask] = fresh
             retries += 1
 
-    losses, cfm_log, nfz_log, energy_log, acc_log = [], [], [], [], []
+    losses, cfm_log, nfz_log, energy_log, acc_log, vel_log = [], [], [], [], [], []
     for ep in range(n_epochs):
         model.train()
         z0 = sample_uniform_annulus(batch_size, delta=delta,
@@ -152,6 +156,7 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
         pen_val = 0.0
         eng_val = 0.0
         acc_val = 0.0
+        vel_val = 0.0
         if nfz_on:
             z0_t = torch.as_tensor(z0, dtype=torch.float32, device=device)
             yT = transport_train(model, z0_t, n_steps=nfz_steps)
@@ -171,6 +176,10 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
                 pen_A = acceleration_penalty(yK, dt_s, domain_size=domain_size)
                 loss = loss + float(acc_lambda) * pen_A
                 acc_val = float(pen_A.item())
+            if vel_on:
+                pen_V = step_penalty(yK, domain_size=domain_size)
+                loss = loss + float(vel_lambda) * pen_V
+                vel_val = float(pen_V.item())
 
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -182,6 +191,7 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
         nfz_log.append(pen_val)
         energy_log.append(eng_val)
         acc_log.append(acc_val)
+        vel_log.append(vel_val)
         if (ep + 1) % 100 == 0:
             extra = ""
             if nfz_on:
@@ -190,6 +200,8 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
                 extra += f"  energy_W={energy_log[-1]:.2f}"
             if acc_on:
                 extra += f"  acc={acc_log[-1]:.3g}"
+            if vel_on:
+                extra += f"  vel_m={vel_log[-1]:.3g}"
             print(f"  epoch {ep+1}/{n_epochs}  loss={loss.item():.6f}{extra}")
     if ema is not None:
         # Use EMA weights for inference (standard CFM/diffusion recipe).
@@ -255,6 +267,11 @@ def main():
                        "(0 = off). Discrete proxy for E[||H_{G_θ}||_F^2] "
                        "via second finite differences along the transported "
                        "chunk. Reuses --energy-chunk-size and --energy-steps.")
+    p.add_argument("--vel-lambda", type=float, default=0.0,
+                  help="Weight of mean step-size penalty (0 = off). "
+                       "Penalises mean(||Δx||) in metres — a velocity "
+                       "regulariser that suppresses large inter-sample jumps. "
+                       "Reuses --energy-chunk-size and --energy-steps.")
     p.add_argument("--domain-size", type=float, default=8.0,
                   help="Physical extent of the unit interval in metres "
                        "(matches RotaryWingEnergyModel default).")
@@ -326,6 +343,7 @@ def main():
             energy_n_cycles=args.energy_n_cycles,
             energy_pts_per_cycle=args.energy_pts_per_cycle,
             acc_lambda=args.acc_lambda,
+            vel_lambda=args.vel_lambda,
             domain_size=args.domain_size,
             device=device)
         train_s = time.perf_counter() - t0
@@ -393,6 +411,7 @@ def main():
         "energy_n_cycles": int(args.energy_n_cycles),
         "energy_pts_per_cycle": int(args.energy_pts_per_cycle),
         "acc_lambda": float(args.acc_lambda),
+        "vel_lambda": float(args.vel_lambda),
         "mask_nfz_target": bool(args.mask_nfz_target),
         "domain_size": float(args.domain_size),
         "train_wall_clock_s": float(train_s),

@@ -400,6 +400,25 @@ def acceleration_penalty(traj_phys: torch.Tensor, dt_s: float,
     return a.pow(2).sum(dim=-1).mean()
 
 
+def step_penalty(traj_phys: torch.Tensor,
+                 domain_size: float = 8.0) -> torch.Tensor:
+    """Mean step size along a transported chunk (metres).
+
+    Penalises large inter-sample displacements — a velocity regulariser
+    proportional to mean speed (since dt is constant across all methods).
+    Complementary to energy_penalty: linear in step size, so gradient is
+    direction-normalised and does not saturate for moderate velocities.
+
+    Args:
+        traj_phys: (T, 2) transported chunk in normalised [-1, 1].
+        domain_size: physical extent of the unit interval (default 8 m).
+    Returns:
+        Scalar mean step size (m).
+    """
+    step_m = torch.linalg.norm(torch.diff(traj_phys, dim=0), dim=1) * domain_size
+    return step_m.mean()
+
+
 def transport_train(model: nn.Module, z0: torch.Tensor,
                     n_steps: int = 8) -> torch.Tensor:
     """Differentiable RK4 transport used during training for endpoint
