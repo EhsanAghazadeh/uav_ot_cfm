@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --qos=short
 #SBATCH --job-name=post_eval
 #SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%j_post_eval.out
@@ -176,5 +177,76 @@ if [ -n "$ARGS" ]; then
         --v-cap-realistic $V_CAP_REALISTIC \
         --out-dir "${ROOT}/velocity_dist"
 fi
+
+# ---------------------------------------------------------------------------
+# Block E -- prefix-stop curves (eval_prefix_stop.py per method+seed)
+# Skips if prefix_curve.npz already exists (re-delete to force recompute).
+# Per-method --time-scale matches the normalisation used in eval_fair.py.
+# ---------------------------------------------------------------------------
+_ts() {          # $1 = method name → correct time-scale
+    case "$1" in
+        toes*)           echo "2.0"  ;;
+        fmec_stein*|fmec_sinkhorn*) echo "7.94" ;;
+        *)               echo "10.0" ;;
+    esac
+}
+
+echo "=== Block E: prefix-stop curves (results/) ==="
+for m in "${METHODS[@]}"; do
+    for s in "${SEEDS[@]}"; do
+        TRAJ="${ROOT}/${m}_seed${s}/trajectory.npz"
+        OUT="${ROOT}/${m}_seed${s}/curves"
+        [ -f "${OUT}/prefix_curve.npz" ] && continue
+        [ ! -f "$TRAJ" ] && { echo "  skip missing $TRAJ"; continue; }
+        python eval_prefix_stop.py --traj "$TRAJ" \
+            --milano-grid "$GRID" --smooth-sigma 1.5 \
+            --time-scale "$(_ts "$m")" \
+            --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
+            --out-dir "$OUT"
+    done
+done
+
+echo "=== Block E: prefix-stop curves (results_nfz_masked/) ==="
+for m in "${METHODS_M[@]}"; do
+    for s in "${SEEDS[@]}"; do
+        TRAJ="${ROOT_M}/${m}_seed${s}/trajectory.npz"
+        OUT="${ROOT_M}/${m}_seed${s}/curves"
+        [ -f "${OUT}/prefix_curve.npz" ] && continue
+        [ ! -f "$TRAJ" ] && { echo "  skip missing $TRAJ"; continue; }
+        python eval_prefix_stop.py --traj "$TRAJ" \
+            --milano-grid "$GRID" --smooth-sigma 1.5 \
+            --time-scale "$(_ts "$m")" \
+            --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
+            --out-dir "$OUT"
+    done
+done
+
+
+# ---------------------------------------------------------------------------
+# Block F -- aggregated prefix-curve plots (all seeds per method on one plot)
+# plot_curves.py groups repeated method names → mean + std band + seed lines.
+# ---------------------------------------------------------------------------
+echo "=== Block F: aggregated prefix-curve plots (results/) ==="
+CURVE_ARGS=""
+for m in "${METHODS[@]}"; do
+    for s in "${SEEDS[@]}"; do
+        C="${ROOT}/${m}_seed${s}/curves/prefix_curve.npz"
+        [ -f "$C" ] && CURVE_ARGS="$CURVE_ARGS --curve ${m}:${C}"
+    done
+done
+[ -n "$CURVE_ARGS" ] && python plot_curves.py $CURVE_ARGS \
+    --out-dir "${ROOT}/comparison_all_seeds"
+
+echo "=== Block F: aggregated prefix-curve plots (results_nfz_masked/) ==="
+CURVE_ARGS=""
+for m in "${METHODS_M[@]}"; do
+    for s in "${SEEDS[@]}"; do
+        C="${ROOT_M}/${m}_seed${s}/curves/prefix_curve.npz"
+        [ -f "$C" ] && CURVE_ARGS="$CURVE_ARGS --curve ${m}:${C}"
+    done
+done
+[ -n "$CURVE_ARGS" ] && python plot_curves.py $CURVE_ARGS \
+    --out-dir "${ROOT_M}/comparison_all_seeds"
+
 
 echo "post_eval complete"

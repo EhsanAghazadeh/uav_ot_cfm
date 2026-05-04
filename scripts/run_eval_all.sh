@@ -24,6 +24,8 @@ source .venv/bin/activate
 METHODS=(toes nonuniform_erg opt_transport sac otcfm otcfm_nfz_l5 otcfm_energy_lambda1e-2 otcfm_energy_la1e-4 otcfm_energy_lambda1e-3_nfz_l500 otcfm_energy_la1e-1_nfz_l500_le1e-3)
 SEEDS=(21 42 63)
 
+_ts() { case "$1" in toes*) echo "2.0";; fmec_stein*|fmec_sinkhorn*) echo "7.94";; *) echo "10.0";; esac; }
+
 # 1. prefix-stop curves
 for m in "${METHODS[@]}"; do
     for s in "${SEEDS[@]}"; do
@@ -33,6 +35,7 @@ for m in "${METHODS[@]}"; do
             python eval_prefix_stop.py --traj "$TRAJ" \
                 --milano-grid data/milano_grid_corrected.npy \
                 --smooth-sigma 1.5 \
+                --time-scale "$(_ts "$m")" \
                 --nfz-center 0.19 0.03 --nfz-radius 0.10 --mask-nfz-target \
                 --out-dir "$OUT"
         else
@@ -55,7 +58,7 @@ for s in "${SEEDS[@]}"; do
     fi
 done
 
-# 3. Cross-method comparison plots per seed
+# 3. Cross-method comparison — per seed AND aggregated (all seeds together)
 for s in "${SEEDS[@]}"; do
     ARGS=""
     for m in "${METHODS[@]}"; do
@@ -65,6 +68,16 @@ for s in "${SEEDS[@]}"; do
     [ -n "$ARGS" ] && python plot_curves.py $ARGS \
         --out-dir results/comparison_seed${s}
 done
+# Aggregated: all seeds per method on one plot (mean + std band)
+AGG_ARGS=""
+for m in "${METHODS[@]}"; do
+    for s in "${SEEDS[@]}"; do
+        C=results/${m}_seed${s}/curves/prefix_curve.npz
+        [ -f "$C" ] && AGG_ARGS="$AGG_ARGS --curve ${m}:${C}"
+    done
+done
+[ -n "$AGG_ARGS" ] && python plot_curves.py $AGG_ARGS \
+    --out-dir results/comparison_all_seeds
 
 # 4. Multi-panel trajectory grids per seed (with NFZ overlay)
 for s in "${SEEDS[@]}"; do
