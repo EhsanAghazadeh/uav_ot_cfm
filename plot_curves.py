@@ -1,16 +1,17 @@
-"""Render the three experiment plots from one or more prefix_curve.npz files.
+"""Render experiment plots from one or more prefix_curve.npz files.
 
-Each plot has one curve per method (here, just TOES). The harness is built
-so additional methods can be appended via --curve method:path; the plotter
-expects each curve already pre-aggregated (mean ± band would come from
-multiple seed runs of a stochastic method).
+Multiple seeds of the same method are passed as repeated --curve method:path
+specs with the same method name. Each method gets:
+  - one solid mean line (full opacity)
+  - per-seed lines in light (alpha 0.25)
+  - ±1 std shaded band
 """
 from __future__ import annotations
 
 import argparse, os
+from collections import defaultdict
 import numpy as np
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -18,126 +19,209 @@ from method_style import color as _color, label as _label
 
 
 METRIC_LABELS = {
-    "fourier_erg": "Fourier ergodic metric  (lower is better)",
-    "density_corr": "density Pearson corr  (higher is better)",
-    "l1": "L1(visitation, target)  (lower is better)",
-    "l2": "L2(visitation, target)  (lower is better)",
+    "fourier_erg":  "Fourier ergodic  $\\mathcal{E}$  (lower better)",
+    "density_corr": "density Pearson corr  (higher better)",
+    "l1":           "$\\ell_1$(visitation, target)  (lower better)",
+    "l2":           "$\\ell_2$(visitation, target)  (lower better)",
 }
 METRIC_BETTER_HIGH = {"fourier_erg": False, "density_corr": True,
-                     "l1": False, "l2": False}
+                      "l1": False, "l2": False}
+NFZ_LABELS = {
+    "nfz_frac_inside":   "frac. of trajectory inside NFZ  (lower better)",
+    "nfz_n_incursions":  "number of NFZ incursions  (lower better)",
+}
 
 
+# ---------------------------------------------------------------------------
+# Interpolation helper
+# ---------------------------------------------------------------------------
 def _interp_at(x_q, x, y):
-    """1D monotone interp: returns y at x_q. NaN outside x range."""
+    """1D monotone interp; NaN outside range."""
     order = np.argsort(x)
-    x = x[order]; y = y[order]
+    xs, ys = x[order], y[order]
     out = np.full_like(x_q, np.nan, dtype=np.float64)
-    mask = (x_q >= x[0]) & (x_q <= x[-1])
-    out[mask] = np.interp(x_q[mask], x, y)
+    mask = (x_q >= xs[0]) & (x_q <= xs[-1])
+    out[mask] = np.interp(x_q[mask], xs, ys)
     return out
 
 
-def plot_exp1_fixed_energy(curves, out_path, metric):
-    """X = energy budget, Y = coverage (one of the four metrics)."""
-    fig, ax = plt.subplots(figsize=(6.5, 4.5))
-    e_lo = max(c["energy"][0] for c in curves)
-    e_hi = min(c["energy"][-1] for c in curves)
-    e_grid = np.geomspace(max(e_lo, 1e-6), e_hi, 80)
+# ---------------------------------------------------------------------------
+# Per-method aggregation plotter
+# ---------------------------------------------------------------------------
+def _plot_group(ax, method, curves, x_key, y_key,
+                log_x=False, sign_x=1.0, sign_y=1.0):
+    """Plot per-seed (light) + mean (solid) + std band for one method.
 
-    for c in curves:
-        y = _interp_at(e_grid, c["energy"], c[metric])
-        ax.plot(e_grid, y, lw=1.6, color=_color(c["method"]),
-                label=_label(c["method"]))
-    ax.set_xscale("log")
-    ax.set_xlabel("energy budget  Σ ‖v‖² · dt")
+    sign_x / sign_y flip axes before aggregation (used when
+    metric direction requires negation for monotone interp).
+    """
+    col = _color(method)
+    lbl = _label(method)
+    xs = [sign_x * c[x_key] for c in curves]
+    ys = [sign_y * c[y_key] for c in curves]
+
+    if len(curves) == 1:
+        ax.plot(sign_x * xs[0], sign_y * ys[0], lw=1.8, color=col, label=lbl)
+        return
+
+    x_lo = max(float(x[np.isfinite(x)].min()) for x in xs)
+    x_hi = min(float(x[np.isfinite(x)].max()) for x in xs)
+    if x_lo >= x_hi:
+        ax.plot(sign_x * xs[0], sign_y * ys[0], lw=1.8, color=col, label=lbl)
+        return
+
+    x_grid = (np.geomspace(max(x_lo, 1e-12), x_hi, 100)
+              if log_x else np.linspace(x_lo, x_hi, 100))
+    y_mat = np.array([_interp_at(x_grid, xv, yv) for xv, yv in zip(xs, ys)])
+
+    # individual seeds (light)
+    for xv, yv in zip(xs, ys):
+        ax.plot(sign_x * xv, sign_y * yv, lw=0.7, color=col, alpha=0.25)
+
+    y_mean = np.nanmean(y_mat, axis=0)
+    y_std  = np.nanstd(y_mat, axis=0)
+    ax.plot(sign_x * x_grid, sign_y * y_mean, lw=2.0, color=col, label=lbl)
+    ax.fill_between(sign_x * x_grid,
+                    sign_y * (y_mean - y_std),
+                    sign_y * (y_mean + y_std),
+                    alpha=0.15, color=col)
+
+
+# ---------------------------------------------------------------------------
+# Exp 1 — fixed energy → coverage
+# ---------------------------------------------------------------------------
+def plot_exp1_fixed_energy(by_method, out_path, metric):
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    e_lo = max(c["energy"][0]  for g in by_method.values() for c in g)
+    e_hi = min(c["energy"][-1] for g in by_method.values() for c in g)
+    for method, curves in by_method.items():
+        _plot_group(ax, method, curves, "energy", metric, log_x=True)
+    ax.set_xlim(e_lo, e_hi); ax.set_xscale("log")
+    ax.set_xlabel("energy budget  $\\sum\\|v\\|^2\\cdot dt$")
     ax.set_ylabel(METRIC_LABELS[metric])
-    ax.set_title(f"Exp 1 — fixed energy budget → coverage ({metric})")
-    ax.grid(alpha=0.3); ax.legend()
+    ax.set_title(f"Fixed energy → coverage ({metric})")
+    ax.grid(alpha=0.3); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
 
 
-def plot_exp2_fixed_coverage(curves, out_path, metric):
-    """X = coverage level, Y = energy needed to reach it."""
+# ---------------------------------------------------------------------------
+# Exp 2 — fixed coverage → energy
+# ---------------------------------------------------------------------------
+def plot_exp2_fixed_coverage(by_method, out_path, metric):
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
     sign = 1.0 if METRIC_BETTER_HIGH[metric] else -1.0
-    cov_lo = max((sign * c[metric]).min() for c in curves)
-    cov_hi = min((sign * c[metric]).max() for c in curves)
-    cov_grid = np.linspace(cov_lo, cov_hi, 80)
-
-    for c in curves:
-        # walk monotone in "better-direction" coverage; y(coverage)=energy
-        cov_signed = sign * c[metric]
-        y = _interp_at(cov_grid, cov_signed, c["energy"])
-        ax.plot(sign * cov_grid, y, lw=1.6, color=_color(c["method"]),
-                label=_label(c["method"]))
+    for method, curves in by_method.items():
+        _plot_group(ax, method, curves, metric, "energy",
+                    sign_x=sign, sign_y=1.0)
     ax.set_yscale("log")
     ax.set_xlabel(METRIC_LABELS[metric])
-    ax.set_ylabel("energy needed  Σ ‖v‖² · dt")
-    ax.set_title(f"Exp 2 — fixed coverage → energy ({metric})")
-    ax.grid(alpha=0.3); ax.legend()
+    ax.set_ylabel("energy needed  $\\sum\\|v\\|^2\\cdot dt$")
+    ax.set_title(f"Fixed coverage → energy ({metric})")
+    ax.grid(alpha=0.3); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
 
 
-def plot_exp3_fixed_n(curves, out_path):
-    """X = number of samples (=prefix length), three stacked panels:
-    Σ‖v‖²·dt, Zeng E_total (kJ), and Fourier ergodic metric."""
-    has_kj = all("E_total_kJ" in c for c in curves)
+# ---------------------------------------------------------------------------
+# Exp 3 — fixed N → energy + coverage
+# ---------------------------------------------------------------------------
+def plot_exp3_fixed_n(by_method, out_path):
+    has_kj = all("E_total_kJ" in c
+                 for g in by_method.values() for c in g)
     n_panels = 3 if has_kj else 2
     fig, axes = plt.subplots(n_panels, 1, figsize=(6.5, 3.5 * n_panels),
                              sharex=True)
-    for c in curves:
-        axes[0].plot(c["n_points"], c["energy"], lw=1.6,
-                     color=_color(c["method"]), label=_label(c["method"]))
-    axes[0].set_ylabel("energy  Σ ‖v‖² · dt")
+    for method, curves in by_method.items():
+        _plot_group(axes[0], method, curves, "n_points", "energy", log_x=True)
+    axes[0].set_ylabel("energy  $\\sum\\|v\\|^2\\cdot dt$")
     axes[0].set_xscale("log"); axes[0].set_yscale("log")
-    axes[0].grid(alpha=0.3); axes[0].legend(); axes[0].set_title(
-        "Exp 3 — fixed N samples → energy & coverage")
-    next_ax = 1
+    axes[0].grid(alpha=0.3); axes[0].legend(fontsize=8)
+    axes[0].set_title("Fixed N samples → energy & coverage")
+    nxt = 1
     if has_kj:
-        for c in curves:
-            axes[next_ax].plot(c["n_points"], c["E_total_kJ"], lw=1.6,
-                               color=_color(c["method"]),
-                               label=_label(c["method"]))
-        axes[next_ax].set_ylabel("E_total  (kJ)  [Zeng 2019]")
-        axes[next_ax].set_xscale("log"); axes[next_ax].set_yscale("log")
-        axes[next_ax].grid(alpha=0.3); axes[next_ax].legend()
-        next_ax += 1
-    for c in curves:
-        axes[next_ax].plot(c["n_points"], c["fourier_erg"], lw=1.6,
-                           color=_color(c["method"]),
-                           label=_label(c["method"]))
-    axes[next_ax].set_ylabel("Fourier ergodic metric")
-    axes[next_ax].set_yscale("log"); axes[next_ax].set_xscale("log")
-    axes[next_ax].set_xlabel("number of samples")
-    axes[next_ax].grid(alpha=0.3)
+        for method, curves in by_method.items():
+            _plot_group(axes[nxt], method, curves, "n_points", "E_total_kJ",
+                        log_x=True)
+        axes[nxt].set_ylabel("$E_\\mathrm{total}$ (kJ)  [Zeng 2019]")
+        axes[nxt].set_xscale("log"); axes[nxt].set_yscale("log")
+        axes[nxt].grid(alpha=0.3); axes[nxt].legend(fontsize=8)
+        nxt += 1
+    for method, curves in by_method.items():
+        _plot_group(axes[nxt], method, curves, "n_points", "fourier_erg",
+                    log_x=True)
+    axes[nxt].set_ylabel("Fourier ergodic $\\mathcal{E}$")
+    axes[nxt].set_xscale("log"); axes[nxt].set_yscale("log")
+    axes[nxt].set_xlabel("number of samples")
+    axes[nxt].grid(alpha=0.3)
     fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
 
 
-def plot_exp4_fixed_kj(curves, out_path, metric):
-    """X = E_total (kJ) [Zeng], Y = coverage. Skipped if any curve lacks E_total_kJ."""
-    if not all("E_total_kJ" in c for c in curves):
+# ---------------------------------------------------------------------------
+# Exp 4 — fixed Zeng E_total → coverage
+# ---------------------------------------------------------------------------
+def plot_exp4_fixed_kj(by_method, out_path, metric):
+    if not all("E_total_kJ" in c
+               for g in by_method.values() for c in g):
         return False
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
-    e_lo = max(c["E_total_kJ"][0] for c in curves)
-    e_hi = min(c["E_total_kJ"][-1] for c in curves)
-    e_grid = np.geomspace(max(e_lo, 1e-6), e_hi, 80)
-    for c in curves:
-        y = _interp_at(e_grid, c["E_total_kJ"], c[metric])
-        ax.plot(e_grid, y, lw=1.6, color=_color(c["method"]),
-                label=_label(c["method"]))
+    for method, curves in by_method.items():
+        _plot_group(ax, method, curves, "E_total_kJ", metric, log_x=True)
     ax.set_xscale("log")
-    ax.set_xlabel("E_total  (kJ)  [Zeng 2019 rotary-wing]")
+    ax.set_xlabel("$E_\\mathrm{total}$ (kJ)  [Zeng 2019]")
     ax.set_ylabel(METRIC_LABELS[metric])
-    ax.set_title(f"Exp 4 — fixed Zeng E_total → coverage ({metric})")
-    ax.grid(alpha=0.3); ax.legend()
+    ax.set_title(f"Fixed Zeng $E_\\mathrm{{total}}$ → coverage ({metric})")
+    ax.grid(alpha=0.3); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
     return True
 
 
+# ---------------------------------------------------------------------------
+# NFZ plots — fixed coverage/energy → NFZ metric
+# ---------------------------------------------------------------------------
+def _has_nfz(by_method, nfz_key):
+    return all(nfz_key in c
+               for g in by_method.values() for c in g)
+
+
+def plot_nfz_fixed_coverage(by_method, out_path, coverage_metric, nfz_key):
+    """X = coverage level, Y = NFZ metric at that coverage."""
+    if not _has_nfz(by_method, nfz_key):
+        return False
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    sign = 1.0 if METRIC_BETTER_HIGH[coverage_metric] else -1.0
+    for method, curves in by_method.items():
+        _plot_group(ax, method, curves, coverage_metric, nfz_key, sign_x=sign)
+    ax.set_xlabel(METRIC_LABELS[coverage_metric])
+    ax.set_ylabel(NFZ_LABELS[nfz_key])
+    ax.set_title(f"Fixed coverage → {nfz_key.replace('_', ' ')}")
+    ax.grid(alpha=0.3); ax.legend(fontsize=8)
+    fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
+    return True
+
+
+def plot_nfz_fixed_energy(by_method, out_path, nfz_key):
+    """X = energy budget, Y = NFZ metric at that energy."""
+    if not _has_nfz(by_method, nfz_key):
+        return False
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    for method, curves in by_method.items():
+        _plot_group(ax, method, curves, "energy", nfz_key, log_x=True)
+    ax.set_xscale("log")
+    ax.set_xlabel("energy budget  $\\sum\\|v\\|^2\\cdot dt$")
+    ax.set_ylabel(NFZ_LABELS[nfz_key])
+    ax.set_title(f"Fixed energy → {nfz_key.replace('_', ' ')}")
+    ax.grid(alpha=0.3); ax.legend(fontsize=8)
+    fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--curve", action="append", required=True,
-                  help="method:path/to/prefix_curve.npz (repeatable)")
+                  help="method:path/to/prefix_curve.npz (repeatable; "
+                       "same method name for multiple seeds)")
     p.add_argument("--out-dir", required=True)
     p.add_argument("--metric-exp1", default="fourier_erg",
                   choices=list(METRIC_LABELS))
@@ -146,44 +230,58 @@ def main():
     args = p.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
-    curves = []
+    # Group curves by method name (multiple seeds → same key)
+    by_method: dict[str, list] = defaultdict(list)
     for spec in args.curve:
         if ":" not in spec:
             raise SystemExit(f"--curve must be method:path (got {spec})")
         method, path = spec.split(":", 1)
-        d = dict(np.load(path))
+        d = dict(np.load(path, allow_pickle=False))
         d["method"] = method
-        curves.append(d)
-    print(f"loaded {len(curves)} curves: {[c['method'] for c in curves]}")
+        by_method[method].append(d)
 
-    plot_exp1_fixed_energy(curves, os.path.join(args.out_dir, "exp1_fixed_energy.png"),
-                          args.metric_exp1)
-    plot_exp2_fixed_coverage(curves, os.path.join(args.out_dir, "exp2_fixed_coverage.png"),
-                            args.metric_exp2)
-    plot_exp3_fixed_n(curves, os.path.join(args.out_dir, "exp3_fixed_n.png"))
-    if plot_exp4_fixed_kj(curves,
-                         os.path.join(args.out_dir, "exp4_fixed_kj.png"),
-                         args.metric_exp1):
-        print("  + exp4_fixed_kj.png (Zeng E_total)")
+    print(f"loaded {sum(len(g) for g in by_method.values())} curves "
+          f"across {len(by_method)} methods: {list(by_method)}")
 
-    # also a 2x2 grid of all 4 coverage metrics for Exp 1 (handy overview)
+    od = args.out_dir
+    m1, m2 = args.metric_exp1, args.metric_exp2
+
+    plot_exp1_fixed_energy(by_method,
+                           os.path.join(od, "exp1_fixed_energy.png"), m1)
+    plot_exp2_fixed_coverage(by_method,
+                             os.path.join(od, "exp2_fixed_coverage.png"), m2)
+    plot_exp3_fixed_n(by_method, os.path.join(od, "exp3_fixed_n.png"))
+    if plot_exp4_fixed_kj(by_method,
+                          os.path.join(od, "exp4_fixed_kj.png"), m1):
+        print("  + exp4_fixed_kj.png")
+
+    # NFZ plots (silently skipped if NFZ metrics not in curves)
+    for nfz_key in ("nfz_frac_inside", "nfz_n_incursions"):
+        tag = "frac" if "frac" in nfz_key else "incursions"
+        if plot_nfz_fixed_coverage(by_method,
+                                   os.path.join(od, f"nfz_fixed_cov_{tag}.png"),
+                                   m2, nfz_key):
+            print(f"  + nfz_fixed_cov_{tag}.png")
+        if plot_nfz_fixed_energy(by_method,
+                                 os.path.join(od, f"nfz_fixed_energy_{tag}.png"),
+                                 nfz_key):
+            print(f"  + nfz_fixed_energy_{tag}.png")
+
+    # 2×2 overview: all 4 coverage metrics under fixed-energy
     fig, axes = plt.subplots(2, 2, figsize=(11, 7.5))
     for ax, metric in zip(axes.flat, METRIC_LABELS):
-        e_lo = max(c["energy"][0] for c in curves)
-        e_hi = min(c["energy"][-1] for c in curves)
-        e_grid = np.geomspace(max(e_lo, 1e-6), e_hi, 80)
-        for c in curves:
-            y = _interp_at(e_grid, c["energy"], c[metric])
-            ax.plot(e_grid, y, lw=1.5, color=_color(c["method"]),
-                    label=_label(c["method"]))
+        for method, curves in by_method.items():
+            _plot_group(ax, method, curves, "energy", metric, log_x=True)
         ax.set_xscale("log")
-        ax.set_xlabel("energy budget"); ax.set_ylabel(METRIC_LABELS[metric])
-        ax.grid(alpha=0.3); ax.legend(fontsize=8)
-    fig.suptitle("Exp 1 — coverage vs energy (all 4 metrics)")
+        ax.set_xlabel("energy budget")
+        ax.set_ylabel(METRIC_LABELS[metric])
+        ax.grid(alpha=0.3); ax.legend(fontsize=7)
+    fig.suptitle("Fixed energy → coverage (all 4 metrics)")
     fig.tight_layout()
-    fig.savefig(os.path.join(args.out_dir, "exp1_all_metrics.png"), dpi=140)
+    fig.savefig(os.path.join(od, "exp1_all_metrics.png"), dpi=140)
     plt.close(fig)
-    print(f"plots in {args.out_dir}")
+
+    print(f"plots in {od}")
 
 
 if __name__ == "__main__":

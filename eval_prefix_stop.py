@@ -137,6 +137,28 @@ def coverage_metrics(pos_unit, dt, target_pmf, target_smooth_pmf,
 
 
 # ---------------------------------------------------------------------------
+# NFZ prefix metrics
+# ---------------------------------------------------------------------------
+def nfz_prefix_metrics(pos_phys: np.ndarray, nfz_center, nfz_radius: float,
+                       ks: np.ndarray):
+    """Returns (nfz_frac[i], nfz_n_incursions[i]) at each prefix index ks[i].
+
+    nfz_frac         : fraction of points 0..k inside the NFZ disc.
+    nfz_n_incursions : number of outside→inside transitions up to k.
+    """
+    c = np.asarray(nfz_center, dtype=np.float64)
+    inside = np.linalg.norm(pos_phys - c, axis=1) <= nfz_radius   # (T,)
+    cum_inside = np.cumsum(inside.astype(np.int64))                # (T,)
+    entries = np.zeros(len(pos_phys), dtype=np.int64)
+    if len(pos_phys) > 1:
+        entries[1:] = (~inside[:-1]) & inside[1:]
+    cum_entries = np.cumsum(entries)                               # (T,)
+    fracs   = cum_inside[ks].astype(np.float64) / (ks + 1)
+    n_incur = cum_entries[ks].astype(np.float64)
+    return fracs, n_incur
+
+
+# ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
 def main():
@@ -245,6 +267,12 @@ def main():
     ks = np.unique(
         np.round(np.geomspace(32, T - 1, args.n_eval_points)).astype(int)
     )
+    nfz_on = (args.nfz_center is not None and args.nfz_radius is not None)
+    if nfz_on:
+        nfz_fracs, nfz_incurs = nfz_prefix_metrics(
+            pos_phys, args.nfz_center, float(args.nfz_radius), ks)
+        print(f"NFZ on        : c={args.nfz_center}  r={args.nfz_radius}")
+
     print(f"trajectory    : T={T} samples, dt={dt}s, total horizon={times[-1]:.2f}s")
     print(f"plan wall t   : {plan_s:.2f}s")
     print(f"max energy    : {energy[-1]:.4e}")
@@ -252,24 +280,32 @@ def main():
 
     rows = []
     eval_t0 = time.perf_counter()
-    for k in ks:
+    for i, k in enumerate(ks):
         m = coverage_metrics(pos_unit[:k+1], dt, target_pmf, target_smooth_pmf,
                             K, hk, lam, phik, sigma=args.smooth_sigma)
         e_kj = energy_model.E_total_kJ(pos_phys[:k+1], dt,
                                        method_type=method_kind)
-        rows.append({
+        row = {
             "k": int(k),
             "t_s": float(times[k]),
             "energy": float(energy[k]),
             "E_total_kJ": float(e_kj),
             "n_points": int(k + 1),
             **m,
-        })
+        }
+        if nfz_on:
+            row["nfz_frac_inside"]  = float(nfz_fracs[i])
+            row["nfz_n_incursions"] = float(nfz_incurs[i])
+        rows.append(row)
     eval_s = time.perf_counter() - eval_t0
     print(f"eval wall t   : {eval_s:.2f}s")
 
     # Pack into arrays
     arr = lambda key: np.array([r[key] for r in rows])
+    nfz_arrays = {}
+    if nfz_on:
+        nfz_arrays["nfz_frac_inside"]  = arr("nfz_frac_inside")
+        nfz_arrays["nfz_n_incursions"] = arr("nfz_n_incursions")
     np.savez(
         os.path.join(args.out_dir, "prefix_curve.npz"),
         k=arr("k"), t_s=arr("t_s"),
@@ -282,6 +318,7 @@ def main():
         plan_wall_clock_s=plan_s,
         eval_wall_clock_s=eval_s,
         method=rec.method,
+        **nfz_arrays,
     )
     with open(os.path.join(args.out_dir, "prefix_curve.json"), "w") as f:
         json.dump({

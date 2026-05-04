@@ -24,6 +24,9 @@ METHOD_COLOR = {
     "sac_velpen00":   "#7f7f7f",   # beta=0 -- sanity / no penalty
     "sac_velpen010":  "#9467bd",   # beta=0.1
     "sac_velpen020":  "#5e2f8c",   # beta=0.2 -- darker purple
+    # FMEC baselines
+    "fmec_stein":     "#e6550d",
+    "fmec_sinkhorn":  "#fdae6b",
     # OT-CFM family
     "otcfm":          "#ff7f0e",
     # legacy short tags (kept so older result dirs still render correctly)
@@ -36,6 +39,11 @@ METHOD_COLOR = {
     "otcfm_energy_la1e-4":                       "#c5b0d5",
     "otcfm_energy_lambda1e-3_nfz_l500":          "#bcbd22",
     "otcfm_energy_la1e-1_nfz_l500_le1e-3":       "#e377c2",
+    # NFZ-masked ablations
+    "otcfm_mask_only":                           "#1f9e89",
+    "otcfm_mask_plus_penalty":                   "#26828e",
+    # velocity-penalty variants
+    "otcfm_mask_vel":                            "#f768a1",
 }
 DEFAULT_COLOR = "#666666"
 
@@ -80,6 +88,7 @@ def _prettify_label(method: str) -> str:
         method = method[:m.start()]
     # Map known prefixes to nicer base names
     prefix_map = [
+        ("otcfm_mask_vel",         "OT-CFM (mask+vel)"),
         ("otcfm_mask_only",        "OT-CFM (mask only)"),
         ("otcfm_mask_plus_penalty","OT-CFM (mask+penalty)"),
         ("otcfm_energy",           "OT-CFM +E"),
@@ -110,6 +119,9 @@ METHOD_LABEL = {
     "sac_velpen00":   r"SAC ($\beta{=}0$)",
     "sac_velpen010":  r"SAC ($\beta{=}0.1$)",
     "sac_velpen020":  r"SAC ($\beta{=}0.2$)",
+    # FMEC baselines
+    "fmec_stein":     "FMEC-Stein",
+    "fmec_sinkhorn":  "FMEC-Sinkhorn",
     # OT-CFM family
     "otcfm":          "OT-CFM",
     # legacy short tags
@@ -122,6 +134,11 @@ METHOD_LABEL = {
     "otcfm_energy_la1e-4":                       "OT-CFM +A",
     "otcfm_energy_lambda1e-3_nfz_l500":          "OT-CFM +NFZ+E",
     "otcfm_energy_la1e-1_nfz_l500_le1e-3":       "OT-CFM +NEA",
+    # NFZ-masked ablations
+    "otcfm_mask_only":                           "OT-CFM (mask only)",
+    "otcfm_mask_plus_penalty":                   "OT-CFM (mask+penalty)",
+    # velocity-penalty variants
+    "otcfm_mask_vel":                            "OT-CFM (mask+vel)",
 }
 
 

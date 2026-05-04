@@ -126,6 +126,41 @@ def main():
         title="Per-metre flight efficiency vs coverage",
         out_path=os.path.join(args.out_dir, "pareto_per_metre.png"))
 
+    # NFZ panels — only produced when nfz_frac_inside is present in records
+    nfz_keys = [r for r in per_run if "nfz_frac_inside" in r]
+    if nfz_keys:
+        _pareto_scatter(
+            per_run, "fourier_erg", "nfz_frac_inside",
+            x_label=r"Fourier ergodic  $\mathcal{E}$  (lower better)",
+            y_label="frac. of trajectory inside NFZ  (lower better)",
+            title="Coverage vs NFZ fraction",
+            out_path=os.path.join(args.out_dir, "pareto_nfz_frac.png"),
+            log_x=True, log_y=False)
+
+        _pareto_scatter(
+            per_run, "fourier_erg", "nfz_n_incursions",
+            x_label=r"Fourier ergodic  $\mathcal{E}$  (lower better)",
+            y_label="number of NFZ incursions  (lower better)",
+            title="Coverage vs NFZ incursions",
+            out_path=os.path.join(args.out_dir, "pareto_nfz_incursions.png"),
+            log_x=True, log_y=False)
+
+        _pareto_scatter(
+            per_run, "P_mean_W", "nfz_frac_inside",
+            x_label=r"mean Zeng power  $\bar P$  (W)",
+            y_label="frac. of trajectory inside NFZ  (lower better)",
+            title="Energy vs NFZ fraction",
+            out_path=os.path.join(args.out_dir, "pareto_energy_nfz_frac.png"),
+            log_x=True, log_y=False)
+
+        _pareto_scatter(
+            per_run, "P_mean_W", "nfz_n_incursions",
+            x_label=r"mean Zeng power  $\bar P$  (W)",
+            y_label="number of NFZ incursions  (lower better)",
+            title="Energy vs NFZ incursions",
+            out_path=os.path.join(args.out_dir, "pareto_energy_nfz_incursions.png"),
+            log_x=True, log_y=False)
+
 
 if __name__ == "__main__":
     main()
