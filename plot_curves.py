@@ -64,8 +64,12 @@ def _plot_group(ax, method, curves, x_key, y_key,
         ax.plot(sign_x * xs[0], sign_y * ys[0], lw=1.8, color=col, label=lbl)
         return
 
-    x_lo = max(float(x[np.isfinite(x)].min()) for x in xs)
-    x_hi = min(float(x[np.isfinite(x)].max()) for x in xs)
+    finite_xs = [x[np.isfinite(x)] for x in xs]
+    if any(len(fx) == 0 for fx in finite_xs):
+        ax.plot(sign_x * xs[0], sign_y * ys[0], lw=1.8, color=col, label=lbl)
+        return
+    x_lo = max(float(fx.min()) for fx in finite_xs)
+    x_hi = min(float(fx.max()) for fx in finite_xs)
     if x_lo >= x_hi:
         ax.plot(sign_x * xs[0], sign_y * ys[0], lw=1.8, color=col, label=lbl)
         return
