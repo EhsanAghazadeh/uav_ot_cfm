@@ -17,7 +17,7 @@ import hashlib
 METHOD_COLOR = {
     # baselines
     "toes":           "#1f77b4",
-    "nonuniform_erg": "#2ca02c",
+    "nonuniform_erg": "#2ca02c",   # Time-warp
     "opt_transport":  "#d62728",
     "sac":            "#9467bd",
     # SAC kinematic-regulariser sweep (run_sac_velpen.sh)
@@ -74,7 +74,7 @@ def _prettify_label(method: str) -> str:
 
       otcfm_mask_only_center_0_6_0_6    -> 'OT-CFM (mask only) @ (0.6, 0.6)'
       otcfm_mask_plus_penalty_center... -> 'OT-CFM (mask+penalty) @ (...)'
-      nonuniform_erg_nfz_center_-0_6... -> 'NonUniformErg @ (-0.6, -0.6)'
+      nonuniform_erg_nfz_center_-0_6... -> 'Time-warp @ (-0.6, -0.6)'
     """
     import re
     suffix = ""
@@ -94,7 +94,7 @@ def _prettify_label(method: str) -> str:
         ("otcfm_energy",           "OT-CFM +E"),
         ("otcfm_nfz",              "OT-CFM +NFZ"),
         ("otcfm",                  "OT-CFM"),
-        ("nonuniform_erg",         "NonUniformErg"),
+        ("nonuniform_erg",         "Time-warp"),
         ("opt_transport",          "OT"),
         ("fmec_stein",             "FMEC-Stein"),
         ("fmec_sinkhorn",          "FMEC-Sinkhorn"),
@@ -112,7 +112,7 @@ def _prettify_label(method: str) -> str:
 METHOD_LABEL = {
     # baselines
     "toes":           "TOES",
-    "nonuniform_erg": "NonUniformErg",
+    "nonuniform_erg": "Time-warp",
     "opt_transport":  "OT",
     "sac":            "SAC",
     # SAC velocity-penalty sweep

@@ -32,7 +32,9 @@ for m in "${METHODS[@]}"; do
         if [ -f "$TRAJ" ]; then
             python eval_prefix_stop.py --traj "$TRAJ" \
                 --milano-grid data/milano_grid_corrected.npy \
-                --smooth-sigma 1.5 --out-dir "$OUT"
+                --smooth-sigma 1.5 \
+                --nfz-center 0.19 0.03 --nfz-radius 0.10 --mask-nfz-target \
+                --out-dir "$OUT"
         else
             echo "skip missing $TRAJ"
         fi
@@ -91,7 +93,7 @@ if [ -n "$FAIR_ARGS" ]; then
     python eval_fair.py $FAIR_ARGS \
         --milano-grid data/milano_grid_corrected.npy \
         --method-time-scale toes:2.0 \
-        --nfz-center 0.19 0.03 --nfz-radius 0.10 \
+        --nfz-center 0.19 0.03 --nfz-radius 0.10 --mask-nfz-target \
         --out-dir results/fair_metrics
     python plot_pareto.py \
         --per-run results/fair_metrics/per_run.json \

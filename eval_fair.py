@@ -266,13 +266,26 @@ def aggregate(per_run):
 # ---------------------------------------------------------------------------
 # LaTeX rendering
 # ---------------------------------------------------------------------------
-def _fmt_mean_std(stats, prec=3, sci=False):
+def _fmt_latex_num(x: float, prec: int = 3) -> str:
+    """Format a float for LaTeX, auto-switching to sci notation."""
+    s = f"{x:.{prec}g}"
+    if "e" in s:
+        mant, exp_str = s.split("e")
+        exp = int(exp_str)
+        return f"{mant}{{\\cdot}}10^{{{exp}}}"
+    return s
+
+
+def _fmt_mean_std(stats, prec: int = 3, bold_mean: bool = False) -> str:
+    r"""Return \ms{mean}{std} — requires \newcommand{\ms}[2]{...} in preamble."""
     if stats is None:
         return "---"
     m, s = stats["mean"], stats["std"]
-    if sci:
-        return f"{m:.{prec}e} $\\pm$ {s:.{prec}e}"
-    return f"{m:.{prec}f} $\\pm$ {s:.{prec}f}"
+    m_str = _fmt_latex_num(m, prec)
+    s_str = _fmt_latex_num(s, prec)
+    if bold_mean:
+        m_str = f"\\mathbf{{{m_str}}}"
+    return f"\\ms{{{m_str}}}{{{s_str}}}"
 
 
 def _direction(key):
@@ -281,34 +294,26 @@ def _direction(key):
 
 
 def _bold_best(values, key):
-    """Return a list of formatted strings with the winner bold-wrapped."""
+    """Return formatted strings; best entry has bold mean inside \\ms{}{}."""
     sign = _direction(key)
     means = [v["mean"] if v is not None else None for v in values]
     valid = [(i, m) for i, m in enumerate(means) if m is not None]
     if not valid:
         return [_fmt_mean_std(v) for v in values]
     best_i = max(valid, key=lambda x: sign * x[1])[0]
-    out = []
-    for i, v in enumerate(values):
-        s = _fmt_mean_std(v, prec=3, sci=(key in (
-            "E_total_kJ", "arc_length_m", "max_speed_mps")))
-        out.append(f"\\textbf{{{s}}}" if i == best_i else s)
-    return out
+    return [_fmt_mean_std(v, bold_mean=(i == best_i))
+            for i, v in enumerate(values)]
 
 
+# Column order matches paper table (T column intentionally omitted — all
+# methods share the same mission horizon after the dt normalisation).
 HEADLINE_COLUMNS = [
     ("fourier_erg",   r"$\mathcal{E}\downarrow$"),
-    ("l1",            r"$\ell_1\downarrow$"),
     ("density_corr",  r"$\rho\uparrow$"),
+    ("l1",            r"$\ell_1\downarrow$"),
     ("P_mean_W",      r"$\bar P$ (W)$\downarrow$"),
-    ("E_total_kJ",    r"$E_\text{tot}$ (kJ)"),
     ("arc_length_m",  r"$L$ (m)"),
     ("E_per_metre_J", r"$E/L$ (J/m)$\downarrow$"),
-    # T_total_s is intentionally NOT in the headline columns: it is a
-    # function of the per-method sampling rate (T = N * dt, with dt
-    # method-specific) and therefore not a fair cross-method axis.
-    # The sampling protocol (N, dt, T_reported, T_realizable) is
-    # reported separately by eval_sampling_table.py.
 ]
 
 NFZ_COLUMNS = [
@@ -321,23 +326,26 @@ NFZ_COLUMNS = [
 
 
 def render_headline_latex(agg, method_order, label="tab:fair"):
+    # Requires in paper preamble:
+    #   \newcommand{\ms}[2]{$#1_{\pm{\scriptstyle#2}}$}
+    from method_style import label as _mlabel
     cols = HEADLINE_COLUMNS
     n = len(cols)
     out = []
+    out.append(r"% Requires: \newcommand{\ms}[2]{$#1_{\pm{\scriptstyle#2}}$}")
     out.append(r"\begin{table}[t]")
-    out.append(r"\caption{Fair comparison on Milano (mean $\pm$ std over seeds, "
-               r"computed on each method's native trajectory). "
-               r"$\bar P$ is the headline energy metric. \textbf{Bold} = best per column. "
-               r"Total mission time $T$ is reported separately in the sampling-protocol "
-               r"table (Appendix), since $T = N \cdot \Delta t$ with $\Delta t$ a per-method "
-               r"sampling-rate convention rather than a property of the planned trajectory.}")
+    out.append(r"\centering")
+    out.append(r"\caption{Density matching on Milano (NFZ-masked target). "
+               r"Mean$_{\pm\text{std}}$ over 3 seeds; \textbf{best} per column. "
+               r"Headline energy metric is mean Zeng power $\bar P$. "
+               r"All methods evaluated on the same $\sim\!2540$\,s mission.}")
     out.append(r"\label{" + label + "}")
-    out.append(r"\centering\small")
+    out.append(r"\small")
+    out.append(r"\setlength{\tabcolsep}{4pt}")
     out.append(r"\begin{tabular}{l" + "c" * n + "}")
     out.append(r"\toprule")
     out.append("Method & " + " & ".join(c[1] for c in cols) + r" \\")
     out.append(r"\midrule")
-    # Pre-compute bolding per column
     cells = {}
     for k, _ in cols:
         col_vals = [agg.get(m, {}).get(k) for m in method_order]
@@ -345,7 +353,8 @@ def render_headline_latex(agg, method_order, label="tab:fair"):
     for i, m in enumerate(method_order):
         if m not in agg:
             continue
-        row = [m.replace("_", r"\_")]
+        row_label = _mlabel(m).replace("&", r"\&")
+        row = [row_label]
         for k, _ in cols:
             row.append(cells[k][i] if cells[k][i] is not None else "---")
         out.append(" & ".join(row) + r" \\")

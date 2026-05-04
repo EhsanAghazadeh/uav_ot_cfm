@@ -79,7 +79,7 @@ if [ -n "$ARGS" ]; then
         --method-time-scale fmec_stein:7.94 \
         --method-time-scale fmec_sinkhorn:7.94 \
         --v-clip-realistic $V_CAP_REALISTIC \
-        --nfz-center $NFZ_C --nfz-radius $NFZ_R \
+        --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
         --out-dir "${ROOT}/fair_metrics_rescaled"
     python plot_pareto.py \
         --per-run "${ROOT}/fair_metrics_rescaled/per_run.json" \
