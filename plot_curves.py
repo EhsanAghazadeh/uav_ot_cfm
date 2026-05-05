@@ -103,7 +103,6 @@ def plot_exp1_fixed_energy(by_method, out_path, metric):
     ax.set_xlim(e_lo, e_hi); ax.set_xscale("log")
     ax.set_xlabel("energy budget  $\\sum\\|v\\|^2\\cdot dt$")
     ax.set_ylabel(METRIC_LABELS[metric])
-    ax.set_title(f"Fixed energy → coverage ({metric})")
     ax.grid(alpha=0.3); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
 
@@ -120,7 +119,6 @@ def plot_exp2_fixed_coverage(by_method, out_path, metric):
     ax.set_yscale("log")
     ax.set_xlabel(METRIC_LABELS[metric])
     ax.set_ylabel("energy needed  $\\sum\\|v\\|^2\\cdot dt$")
-    ax.set_title(f"Fixed coverage → energy ({metric})")
     ax.grid(alpha=0.3); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
 
@@ -139,7 +137,6 @@ def plot_exp3_fixed_n(by_method, out_path):
     axes[0].set_ylabel("energy  $\\sum\\|v\\|^2\\cdot dt$")
     axes[0].set_xscale("log"); axes[0].set_yscale("log")
     axes[0].grid(alpha=0.3); axes[0].legend(fontsize=8)
-    axes[0].set_title("Fixed N samples → energy & coverage")
     nxt = 1
     if has_kj:
         for method, curves in by_method.items():
@@ -172,7 +169,6 @@ def plot_exp4_fixed_kj(by_method, out_path, metric):
     ax.set_xscale("log")
     ax.set_xlabel("$E_\\mathrm{total}$ (kJ)  [Zeng 2019]")
     ax.set_ylabel(METRIC_LABELS[metric])
-    ax.set_title(f"Fixed Zeng $E_\\mathrm{{total}}$ → coverage ({metric})")
     ax.grid(alpha=0.3); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
     return True
@@ -196,7 +192,6 @@ def plot_nfz_fixed_coverage(by_method, out_path, coverage_metric, nfz_key):
         _plot_group(ax, method, curves, coverage_metric, nfz_key, sign_x=sign)
     ax.set_xlabel(METRIC_LABELS[coverage_metric])
     ax.set_ylabel(NFZ_LABELS[nfz_key])
-    ax.set_title(f"Fixed coverage → {nfz_key.replace('_', ' ')}")
     ax.grid(alpha=0.3); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
     return True
@@ -212,7 +207,6 @@ def plot_nfz_fixed_energy(by_method, out_path, nfz_key):
     ax.set_xscale("log")
     ax.set_xlabel("energy budget  $\\sum\\|v\\|^2\\cdot dt$")
     ax.set_ylabel(NFZ_LABELS[nfz_key])
-    ax.set_title(f"Fixed energy → {nfz_key.replace('_', ' ')}")
     ax.grid(alpha=0.3); ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(out_path, dpi=140); plt.close(fig)
     return True
@@ -259,30 +253,67 @@ def main():
                           os.path.join(od, "exp4_fixed_kj.png"), m1):
         print("  + exp4_fixed_kj.png")
 
-    # NFZ plots (silently skipped if NFZ metrics not in curves)
-    for nfz_key in ("nfz_frac_inside", "nfz_n_incursions"):
-        tag = "frac" if "frac" in nfz_key else "incursions"
-        if plot_nfz_fixed_coverage(by_method,
-                                   os.path.join(od, f"nfz_fixed_cov_{tag}.png"),
-                                   m2, nfz_key):
-            print(f"  + nfz_fixed_cov_{tag}.png")
-        if plot_nfz_fixed_energy(by_method,
-                                 os.path.join(od, f"nfz_fixed_energy_{tag}.png"),
-                                 nfz_key):
-            print(f"  + nfz_fixed_energy_{tag}.png")
+    # NFZ plots (silently skipped if NFZ metrics not in curves):
+    # One figure per coverage metric (pearson, l1) with frac + incursions side by side.
+    for cov_metric, cov_tag in [("density_corr", "pearson"), ("l1", "l1")]:
+        nfz_keys = ("nfz_frac_inside", "nfz_n_incursions")
+        if _has_nfz(by_method, nfz_keys[0]) and _has_nfz(by_method, nfz_keys[1]):
+            sign = 1.0 if METRIC_BETTER_HIGH[cov_metric] else -1.0
+            fig, (ax_f, ax_i) = plt.subplots(1, 2, figsize=(12, 4.5))
+            for method, curves in by_method.items():
+                _plot_group(ax_f, method, curves, cov_metric, "nfz_frac_inside",
+                            sign_x=sign)
+                _plot_group(ax_i, method, curves, cov_metric, "nfz_n_incursions",
+                            sign_x=sign)
+            for ax, nfz_key in [(ax_f, "nfz_frac_inside"),
+                                 (ax_i, "nfz_n_incursions")]:
+                ax.set_xlabel(METRIC_LABELS[cov_metric])
+                ax.set_ylabel(NFZ_LABELS[nfz_key])
+                ax.grid(alpha=0.3); ax.legend(fontsize=8)
+            fig.tight_layout()
+            fname = f"nfz_fixed_cov_{cov_tag}.png"
+            fig.savefig(os.path.join(od, fname), dpi=140)
+            plt.close(fig)
+            print(f"  + {fname}")
 
-    # 2×2 overview: all 4 coverage metrics under fixed-energy
-    fig, axes = plt.subplots(2, 2, figsize=(11, 7.5))
-    for ax, metric in zip(axes.flat, METRIC_LABELS):
-        for method, curves in by_method.items():
-            _plot_group(ax, method, curves, "energy", metric, log_x=True)
+        for nfz_key in nfz_keys:
+            tag = "frac" if "frac" in nfz_key else "incursions"
+            plot_nfz_fixed_energy(by_method,
+                                  os.path.join(od, f"nfz_fixed_energy_{cov_tag}_{tag}.png"),
+                                  nfz_key)
+
+    # Individual plots per metric (fixed energy → coverage)
+    for metric in METRIC_LABELS:
+        plot_exp1_fixed_energy(by_method,
+                               os.path.join(od, f"exp1_metric_{metric}.png"),
+                               metric)
+
+    # Paired: Pearson (left) + L1 (right)
+    fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(12, 4.5))
+    for method, curves in by_method.items():
+        _plot_group(ax_l, method, curves, "energy", "density_corr", log_x=True)
+        _plot_group(ax_r, method, curves, "energy", "l1", log_x=True)
+    for ax, metric in [(ax_l, "density_corr"), (ax_r, "l1")]:
         ax.set_xscale("log")
-        ax.set_xlabel("energy budget")
+        ax.set_xlabel("energy budget  $\\sum\\|v\\|^2\\cdot dt$")
         ax.set_ylabel(METRIC_LABELS[metric])
-        ax.grid(alpha=0.3); ax.legend(fontsize=7)
-    fig.suptitle("Fixed energy → coverage (all 4 metrics)")
+        ax.grid(alpha=0.3); ax.legend(fontsize=8)
     fig.tight_layout()
-    fig.savefig(os.path.join(od, "exp1_all_metrics.png"), dpi=140)
+    fig.savefig(os.path.join(od, "exp1_pearson_l1.png"), dpi=140)
+    plt.close(fig)
+
+    # Paired: L2 (left) + Fourier ergodic (right)
+    fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(12, 4.5))
+    for method, curves in by_method.items():
+        _plot_group(ax_l, method, curves, "energy", "l2", log_x=True)
+        _plot_group(ax_r, method, curves, "energy", "fourier_erg", log_x=True)
+    for ax, metric in [(ax_l, "l2"), (ax_r, "fourier_erg")]:
+        ax.set_xscale("log")
+        ax.set_xlabel("energy budget  $\\sum\\|v\\|^2\\cdot dt$")
+        ax.set_ylabel(METRIC_LABELS[metric])
+        ax.grid(alpha=0.3); ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(os.path.join(od, "exp1_l2_ergodic.png"), dpi=140)
     plt.close(fig)
 
     print(f"plots in {od}")

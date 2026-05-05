@@ -83,7 +83,6 @@ def _pareto_scatter(per_run, x_key, y_key, x_label, y_label, title, out_path,
     if log_y: ax.set_yscale("log")
     ax.set_xlabel(x_label, fontsize=11)
     ax.set_ylabel(y_label, fontsize=11)
-    ax.set_title(title, fontsize=11)
     ax.grid(True, alpha=0.3, which="both")
     ax.legend(fontsize=8, loc="best", framealpha=0.95)
     fig.tight_layout()

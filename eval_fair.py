@@ -312,6 +312,7 @@ HEADLINE_COLUMNS = [
     ("density_corr",  r"$\rho\uparrow$"),
     ("l1",            r"$\ell_1\downarrow$"),
     ("P_mean_W",      r"$\bar P$ (W)$\downarrow$"),
+    ("E_total_kJ",    r"$E_\mathrm{tot}$ (kJ)$\downarrow$"),
     ("arc_length_m",  r"$L$ (m)"),
     ("E_per_metre_J", r"$E/L$ (J/m)$\downarrow$"),
 ]
