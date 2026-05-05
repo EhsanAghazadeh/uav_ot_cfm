@@ -37,8 +37,15 @@ M=${METHODS[$((i / 3))]}
 S=${SEEDS[$((i % 3))]}
 OUT=results_nfz_masked_03_03/${M}_seed${S}
 
-# Single disc: --nfz CX CY R  (repeatable for multi-disc configs)
-# NFZ_FLAGS="--nfz 0.19 0.03 0.10 --mask-nfz-target"
+# Set NFZ_FLAGS below, then sbatch this script.
+#
+# Single disc:
+#   NFZ_FLAGS="--nfz 0.19 0.03 0.10 --mask-nfz-target"
+#
+# Multiple discs (repeat --nfz once per disc: cx cy r):
+#   NFZ_FLAGS="--nfz 0.5 0.0 0.2 --nfz -0.5 0.0 0.2 --nfz 0.0 0.5 0.2 --nfz 0.0 -0.5 0.2 --mask-nfz-target"
+#
+# Active config:
 NFZ_FLAGS="--nfz 0.3 0.3 0.3 --mask-nfz-target"
 
 echo "[baselines_nfz_masked] task=$i  method=$M  seed=$S  out=$OUT"
