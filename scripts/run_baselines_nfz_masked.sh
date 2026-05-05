@@ -9,7 +9,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64GB
 #SBATCH --time=06:00:00
-#SBATCH --array=0-11
+#SBATCH --array=0-17
 
 # NFZ-condition baselines on the *masked* Milano target
 # (zero density inside the disc, renormalised). Apples-to-apples with
@@ -20,7 +20,7 @@
 # so trajectory length, horizon, and method hyperparameters are identical
 # — only the target distribution is different.
 #
-# 4 methods x 3 seeds = 12 array tasks.
+# 6 methods x 3 seeds = 18 array tasks.
 
 set -euo pipefail
 mkdir -p slurm_output
@@ -29,16 +29,17 @@ module purge
 module load python/3.11.7
 source .venv/bin/activate
 
-METHODS=(toes nonuniform_erg opt_transport sac)
+METHODS=(toes nonuniform_erg opt_transport sac fmec_stein fmec_sinkhorn)
 SEEDS=(21 42 63)
 
 i=$SLURM_ARRAY_TASK_ID
 M=${METHODS[$((i / 3))]}
 S=${SEEDS[$((i % 3))]}
-OUT=results_nfz_masked/${M}_seed${S}
+OUT=results_nfz_masked_03_03/${M}_seed${S}
 
-# NFZ_FLAGS="--nfz-center 0.19 0.03 --nfz-radius 0.10 --mask-nfz-target"
-NFZ_FLAGS="--nfz-center -0.6 -0.6 --nfz-radius 0.10 --mask-nfz-target"
+# Single disc: --nfz CX CY R  (repeatable for multi-disc configs)
+# NFZ_FLAGS="--nfz 0.19 0.03 0.10 --mask-nfz-target"
+NFZ_FLAGS="--nfz 0.3 0.3 0.3 --mask-nfz-target"
 
 echo "[baselines_nfz_masked] task=$i  method=$M  seed=$S  out=$OUT"
 
@@ -66,6 +67,22 @@ case "$M" in
         python run_baseline_milano.py --method sac \
             --num-points 25600 --sac-train-steps 500000 \
             --sac-grid-size 50 --sac-comm-range 0.18 --dt 0.01 \
+            $NFZ_FLAGS \
+            --seed $S --out-dir $OUT
+        ;;
+    fmec_stein)
+        python run_baseline_milano_v1.py --method fmec_stein \
+            --fmec-dt 0.05 --fmec-tsteps 6400 \
+            --fmec-num-iters 500 --fmec-step-size 0.01 \
+            --fmec-num-samples 1000 --fmec-grad-subsample 2000 \
+            $NFZ_FLAGS \
+            --seed $S --out-dir $OUT
+        ;;
+    fmec_sinkhorn)
+        python run_baseline_milano_v1.py --method fmec_sinkhorn \
+            --fmec-dt 0.05 --fmec-tsteps 6400 \
+            --fmec-num-iters 200 --fmec-step-size 0.005 \
+            --fmec-num-samples 1000 --fmec-grad-subsample 2000 \
             $NFZ_FLAGS \
             --seed $S --out-dir $OUT
         ;;

@@ -17,6 +17,7 @@ def milano_grid_and_sampler(
     eps_floor: float = 1e-12,
     xlim: tuple[float, float] = (-1.0, 1.0),
     ylim: tuple[float, float] = (-1.0, 1.0),
+    nfz_discs=None,
     nfz_center: tuple[float, float] | None = None,
     nfz_radius: float | None = None,
     seed: int = 0,
@@ -28,6 +29,7 @@ def milano_grid_and_sampler(
         eps_floor=eps_floor,
         xlim=xlim,
         ylim=ylim,
+        nfz_discs=nfz_discs,
         nfz_center=nfz_center,
         nfz_radius=nfz_radius,
     )

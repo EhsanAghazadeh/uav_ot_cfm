@@ -326,22 +326,13 @@ def plan_milano_fmec_for_baseline(args: Any, fmec_method: str):
     nfz_center, nfz_radius, seed, and fmec_* fields (see v1 parser).
     """
     assert fmec_method in ("stein", "sinkhorn")
-    nfz_c = (
-        tuple(args.nfz_center)
-        if args.mask_nfz_target and args.nfz_center is not None
-        else None
-    )
-    nfz_r = (
-        float(args.nfz_radius)
-        if args.mask_nfz_target and args.nfz_radius is not None
-        else None
-    )
+    nfz_discs = getattr(args, "nfz_discs", None) or []
+    mask_discs = nfz_discs if args.mask_nfz_target else []
     target = milano_target(
         args.milano_grid,
         smooth_sigma=args.smooth_sigma,
         eps_floor=args.eps_floor,
-        nfz_center=nfz_c,
-        nfz_radius=nfz_r,
+        nfz_discs=mask_discs if mask_discs else None,
         seed=args.seed,
     )
 
@@ -352,11 +343,12 @@ def plan_milano_fmec_for_baseline(args: Any, fmec_method: str):
         if getattr(args, "fmec_x0", None) is not None
         else None
     )
+    # Soft NFZ penalty: fmec only supports single disc; use first disc if present.
     soft_nfz_c = None
     soft_nfz_r = 0.0
-    if getattr(args, "fmec_lambda_nfz", 0.0) > 0.0 and args.nfz_center is not None:
-        soft_nfz_c = (float(args.nfz_center[0]), float(args.nfz_center[1]))
-        soft_nfz_r = float(args.nfz_radius) if args.nfz_radius is not None else 0.0
+    if getattr(args, "fmec_lambda_nfz", 0.0) > 0.0 and nfz_discs:
+        soft_nfz_c = nfz_discs[0][0]
+        soft_nfz_r = float(nfz_discs[0][1])
 
     t0 = time.perf_counter()
     final_x_traj, _u, _x0b, metric_history, wall_loop, _snaps = (
@@ -403,16 +395,7 @@ def plan_milano_fmec_for_baseline(args: Any, fmec_method: str):
         else float("nan"),
         "milano_smooth_sigma": float(args.smooth_sigma),
         "mask_nfz_target": bool(args.mask_nfz_target),
-        "nfz_center": (
-            list(args.nfz_center)
-            if args.mask_nfz_target and args.nfz_center is not None
-            else None
-        ),
-        "nfz_radius": (
-            float(args.nfz_radius)
-            if args.mask_nfz_target and args.nfz_radius is not None
-            else None
-        ),
+        "nfz_discs": [[[float(c[0]), float(c[1])], float(r)] for c, r in mask_discs],
         "fmec_lambda_nfz": float(args.fmec_lambda_nfz),
         "fmec_grad_subsample": int(args.fmec_grad_subsample),
         "fmec_metric_subsample": int(args.fmec_metric_subsample),
