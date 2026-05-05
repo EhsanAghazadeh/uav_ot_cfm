@@ -321,17 +321,25 @@ def cfm_loss(
     return ((v_pred - u_target) ** 2).mean()
 
 
-def nfz_penalty(pts: torch.Tensor, center, radius: float,
-                margin: float = 0.05) -> torch.Tensor:
-    """Soft no-fly-zone penalty: mean( max(0, r+margin - ||p-c||)^2 ).
-
-    Pushes transported points outside a disc B(center, radius+margin).
-    The +margin keeps a buffer so points don't sit exactly on the boundary.
-    """
+def _nfz_penalty_single(pts: torch.Tensor, center, radius: float,
+                        margin: float) -> torch.Tensor:
     if not isinstance(center, torch.Tensor):
         center = torch.as_tensor(center, dtype=pts.dtype, device=pts.device)
     dist = torch.linalg.norm(pts - center, dim=1)
-    return torch.clamp(radius + margin - dist, min=0).pow(2).mean()
+    return torch.clamp(float(radius) + margin - dist, min=0).pow(2).mean()
+
+
+def nfz_penalty(pts: torch.Tensor, discs, margin: float = 0.05) -> torch.Tensor:
+    """Mean soft NFZ penalty over multiple discs.
+
+    discs: list of (center, radius) pairs — e.g. [((0.19, 0.03), 0.10), ...]
+    Each disc contributes mean(max(0, r+margin - ||p-c||)^2); returns
+    the mean over all discs so the scale is independent of disc count.
+    """
+    if not discs:
+        return pts.new_zeros(1).squeeze()
+    total = sum(_nfz_penalty_single(pts, c, r, margin) for c, r in discs)
+    return total / len(discs)
 
 
 def power_zeng(v: torch.Tensor, P_0: float = 79.86, P_i: float = 88.63,

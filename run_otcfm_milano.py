@@ -30,12 +30,13 @@ from ot_cfm import (VelocityNet, build_model, cfm_loss, transport,
 
 def make_grid_sampler(grid_path, smooth_sigma, eps_floor,
                       xlim=(-1.0, 1.0), ylim=(-1.0, 1.0), seed=0,
+                      nfz_discs=None,
                       nfz_center=None, nfz_radius=None):
     """Build a Milano-density sampler.
 
-    When `nfz_center` and `nfz_radius` are provided, the underlying
-    target density is zeroed inside the disc and renormalised, so
-    sampler output never lands in the NFZ. This is the principled
+    When nfz_discs is provided (list of ((cx,cy), r) tuples), the underlying
+    target density is zeroed inside each disc and renormalised, so
+    sampler output never lands in any NFZ. This is the principled
     encoding of the constraint at the *distribution* level (cf. §2.3
     of the paper); pair with the soft penalty for residual gradient
     signal at the boundary.
@@ -43,6 +44,7 @@ def make_grid_sampler(grid_path, smooth_sigma, eps_floor,
     from target_density import load_milano_target
     t = load_milano_target(grid_path, smooth_sigma=smooth_sigma,
                            eps_floor=eps_floor, xlim=xlim, ylim=ylim,
+                           nfz_discs=nfz_discs,
                            nfz_center=nfz_center, nfz_radius=nfz_radius)
     g = t["grid"]
     xs, ys = t["xs"], t["ys"]
@@ -70,7 +72,7 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
               n_layers, delta, seed, arch="v1", n_time_freqs=16,
               n_spatial_freqs=16, sigma_x=5.0,
               ema_decay=0.0,
-              nfz_center=None, nfz_radius=None, nfz_margin=0.05,
+              nfz_discs=None, nfz_margin=0.05,
               nfz_lambda=0.0, nfz_steps=8, nfz_reject_targets=False,
               energy_lambda=0.0, energy_chunk_size=64, energy_steps=8,
               energy_n_cycles=50, energy_pts_per_cycle=200,
@@ -87,11 +89,10 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
     if ema is not None:
         print(f"  EMA on: decay={ema_decay:.4g}")
 
-    nfz_on = (nfz_center is not None and nfz_radius is not None
-              and nfz_lambda > 0.0)
+    nfz_on = bool(nfz_discs) and nfz_lambda > 0.0
     if nfz_on:
-        nfz_c = np.asarray(nfz_center, dtype=np.float32)
-        print(f"  NFZ on: c=({nfz_c[0]:.3f},{nfz_c[1]:.3f})  r={nfz_radius:.3f}"
+        desc = "  ".join(f"c=({c[0]:.3f},{c[1]:.3f}) r={r:.3f}" for c, r in nfz_discs)
+        print(f"  NFZ on ({len(nfz_discs)} disc(s)): {desc}"
               f"  margin={nfz_margin:.3f}  lambda={nfz_lambda:.3f}  "
               f"steps={nfz_steps}  reject_targets={nfz_reject_targets}")
 
@@ -125,18 +126,19 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
             print(f"  Vel on: lambda={vel_lambda:.4g}  chunk={energy_chunk_size}"
                   f"  steps={energy_steps}  domain_size={domain_size}")
 
-    def _resample_outside_nfz(x, c, r, sampler, base_seed):
-        """Replace any x_i inside disc B(c, r) with fresh samples."""
-        c_a = np.asarray(c, dtype=x.dtype)
+    def _resample_outside_nfz(x, discs, sampler, base_seed):
+        """Replace any x_i inside any NFZ disc with fresh samples."""
         retries = 0
         while True:
-            d = np.linalg.norm(x - c_a, axis=1)
-            mask = d < r
-            n_bad = int(mask.sum())
+            inside = np.zeros(len(x), dtype=bool)
+            for center, radius in discs:
+                c_a = np.asarray(center, dtype=x.dtype)
+                inside |= np.linalg.norm(x - c_a, axis=1) < float(radius)
+            n_bad = int(inside.sum())
             if n_bad == 0 or retries > 20:
                 return x
             fresh = sampler(n_bad, seed=base_seed + 17 * retries + 1)
-            x[mask] = fresh
+            x[inside] = fresh
             retries += 1
 
     losses, cfm_log, nfz_log, energy_log, acc_log, vel_log = [], [], [], [], [], []
@@ -148,7 +150,7 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
 
         if nfz_on and nfz_reject_targets:
             x1 = _resample_outside_nfz(
-                x1, nfz_c, float(nfz_radius), sample_target,
+                x1, nfz_discs, sample_target,
                 base_seed=ep * 1000 + seed + 1)
 
         loss_cfm = cfm_loss(model, z0, x1, device=device)
@@ -160,7 +162,7 @@ def train_cfm(sample_target, n_epochs, batch_size, lr, hidden_dim,
         if nfz_on:
             z0_t = torch.as_tensor(z0, dtype=torch.float32, device=device)
             yT = transport_train(model, z0_t, n_steps=nfz_steps)
-            pen = nfz_penalty(yT, nfz_c, float(nfz_radius), float(nfz_margin))
+            pen = nfz_penalty(yT, nfz_discs, float(nfz_margin))
             loss = loss + float(nfz_lambda) * pen
             pen_val = float(pen.item())
 
@@ -237,11 +239,14 @@ def main():
     p.add_argument("--n-cycles", type=int, default=300)
     p.add_argument("--pts-per-cycle", type=int, default=200)
     p.add_argument("--transport-steps", type=int, default=20)
+    p.add_argument("--nfz", action="append", nargs=3, type=float,
+                  metavar=("CX", "CY", "R"), default=[],
+                  help="NFZ disc: cx cy radius (repeatable for multiple discs). "
+                       "E.g. --nfz 0.19 0.03 0.10 --nfz 0.3 0.3 0.15")
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
-                  metavar=("CX", "CY"),
-                  help="No-fly disc centre (normalised). If unset, NFZ is off.")
+                  help=argparse.SUPPRESS)  # deprecated, use --nfz
     p.add_argument("--nfz-radius", type=float, default=None,
-                  help="No-fly disc radius (normalised).")
+                  help=argparse.SUPPRESS)  # deprecated, use --nfz
     p.add_argument("--nfz-margin", type=float, default=0.05,
                   help="Safety margin beyond radius (default 0.05).")
     p.add_argument("--nfz-lambda", type=float, default=0.0,
@@ -287,22 +292,18 @@ def main():
     p.add_argument("--out-dir", default="results/otcfm_milano")
     args = p.parse_args()
 
+    nfz_discs = [((cx, cy), r) for cx, cy, r in (args.nfz or [])]
+    if args.nfz_center is not None and args.nfz_radius is not None:
+        nfz_discs.append((tuple(args.nfz_center), float(args.nfz_radius)))
+
     os.makedirs(args.out_dir, exist_ok=True)
-    mask_nfz_c = (tuple(args.nfz_center)
-                  if args.mask_nfz_target and args.nfz_center is not None
-                  else None)
-    mask_nfz_r = (float(args.nfz_radius)
-                  if args.mask_nfz_target and args.nfz_radius is not None
-                  else None)
-    if args.mask_nfz_target and (mask_nfz_c is None or mask_nfz_r is None):
-        raise SystemExit("--mask-nfz-target requires --nfz-center and "
-                         "--nfz-radius.")
-    if mask_nfz_c is not None:
-        print(f"  Target density: NFZ-masked at c={mask_nfz_c}, r={mask_nfz_r}")
+    mask_discs = nfz_discs if args.mask_nfz_target else []
+    if args.mask_nfz_target and not mask_discs:
+        raise SystemExit("--mask-nfz-target requires at least one --nfz CX CY R disc.")
+    if mask_discs:
+        print(f"  Target density: NFZ-masked with {len(mask_discs)} disc(s): {mask_discs}")
     sample_target = make_grid_sampler(args.milano_grid, args.smooth_sigma,
-                                      args.eps_floor,
-                                      nfz_center=mask_nfz_c,
-                                      nfz_radius=mask_nfz_r)
+                                      args.eps_floor, nfz_discs=mask_discs)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"device: {device}"
@@ -333,7 +334,7 @@ def main():
             arch=args.arch, n_time_freqs=args.n_time_freqs,
             n_spatial_freqs=args.n_spatial_freqs, sigma_x=args.sigma_x,
             ema_decay=args.ema_decay,
-            nfz_center=args.nfz_center, nfz_radius=args.nfz_radius,
+            nfz_discs=nfz_discs,
             nfz_margin=args.nfz_margin, nfz_lambda=args.nfz_lambda,
             nfz_steps=args.nfz_steps,
             nfz_reject_targets=args.nfz_reject_targets,
@@ -398,9 +399,7 @@ def main():
         "dt_s": dt,
         "N": int(len(pos_phys)),
         "milano_smooth_sigma": float(args.smooth_sigma),
-        "nfz_center": (list(args.nfz_center) if args.nfz_center else None),
-        "nfz_radius": (float(args.nfz_radius)
-                       if args.nfz_radius is not None else None),
+        "nfz_discs": [[[float(c[0]), float(c[1])], float(r)] for c, r in nfz_discs],
         "nfz_margin": float(args.nfz_margin),
         "nfz_lambda": float(args.nfz_lambda),
         "nfz_steps": int(args.nfz_steps),

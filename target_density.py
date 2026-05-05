@@ -32,6 +32,7 @@ import numpy as np
 
 def load_milano_target(grid_path, smooth_sigma=1.5, eps_floor=1e-12,
                        xlim=(-1.0, 1.0), ylim=(-1.0, 1.0),
+                       nfz_discs=None,
                        nfz_center=None, nfz_radius=None):
     """Load the smoothed Milano density, optionally with NFZ mass zeroed.
 
@@ -73,18 +74,26 @@ def load_milano_target(grid_path, smooth_sigma=1.5, eps_floor=1e-12,
     xs = np.linspace(xlim[0], xlim[1], w)
     ys = np.linspace(ylim[0], ylim[1], h)
 
-    nfz_mask = None
+    # Build unified disc list (nfz_discs takes priority; old single-disc args kept for compat)
+    discs = list(nfz_discs or [])
     if nfz_center is not None and nfz_radius is not None:
-        cx, cy = float(nfz_center[0]), float(nfz_center[1])
-        r = float(nfz_radius)
-        XX, YY = np.meshgrid(xs, ys)            # (h, w)
-        nfz_mask = (XX - cx) ** 2 + (YY - cy) ** 2 < r * r
+        discs = discs + [(nfz_center, nfz_radius)]
+
+    nfz_mask = None
+    if discs:
+        XX, YY = np.meshgrid(xs, ys)
+        combined = np.zeros((h, w), dtype=bool)
+        for center, radius in discs:
+            cx, cy = float(center[0]), float(center[1])
+            r = float(radius)
+            combined |= (XX - cx) ** 2 + (YY - cy) ** 2 < r * r
+        nfz_mask = combined
         g = g.copy()
         g[nfz_mask] = 0.0
         if g.sum() <= 0:
             raise ValueError(
-                f"NFZ mask (c={nfz_center}, r={nfz_radius}) zeroed all "
-                "density. Check the disc placement against the grid extent."
+                f"NFZ discs {discs} zeroed all density. "
+                "Check disc placements against the grid extent."
             )
 
     pmf = g / g.sum()

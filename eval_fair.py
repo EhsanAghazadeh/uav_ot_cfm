@@ -364,15 +364,15 @@ def render_headline_latex(agg, method_order, label="tab:fair"):
     return "\n".join(out)
 
 
-def render_nfz_latex(agg, method_order, center, radius, label="tab:nfz"):
+def render_nfz_latex(agg, method_order, nfz_discs, label="tab:nfz"):
     cols = NFZ_COLUMNS
     out = []
+    disc_str = "; ".join(
+        f"$c=({c[0]:.2f},{c[1]:.2f}),r={r:.2f}$" for c, r in nfz_discs)
     out.append(r"\begin{table}[t]")
-    out.append(r"\caption{NFZ violation at $c=("
-               + f"{center[0]:.2f}, {center[1]:.2f}"
-               + r")$, $r=" + f"{radius:.2f}" + r"$. "
+    out.append(r"\caption{NFZ violation (" + disc_str + r"). "
                r"\texttt{frac inside} reports the fraction of trajectory "
-               r"samples whose position lies in the disc.}")
+               r"samples whose position lies in any NFZ disc.}")
     out.append(r"\label{" + label + "}")
     out.append(r"\centering\small")
     out.append(r"\begin{tabular}{l" + "c" * len(cols) + "}")
@@ -455,9 +455,13 @@ def main():
                        "native dt must be preserved while normalising T_eval.")
     p.add_argument("--method-order", nargs="*", default=None,
                   help="Optional explicit method order in tables.")
+    p.add_argument("--nfz", action="append", nargs=3, type=float,
+                  metavar=("CX", "CY", "R"), default=[],
+                  help="NFZ disc: cx cy radius (repeatable).")
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
-                  metavar=("CX", "CY"))
-    p.add_argument("--nfz-radius", type=float, default=None)
+                  help=argparse.SUPPRESS)
+    p.add_argument("--nfz-radius", type=float, default=None,
+                  help=argparse.SUPPRESS)
     p.add_argument("--mask-nfz-target", action="store_true",
                   help="Compute coverage metrics against the NFZ-masked "
                        "target (zero density inside the disc, renormalised). "
@@ -466,30 +470,28 @@ def main():
                        "against it. Requires --nfz-center / --nfz-radius.")
     p.add_argument("--out-dir", required=True)
     args = p.parse_args()
+    nfz_discs = [((cx, cy), r) for cx, cy, r in (args.nfz or [])]
+    if args.nfz_center is not None and args.nfz_radius is not None:
+        nfz_discs.append((tuple(args.nfz_center), float(args.nfz_radius)))
+    nfz_on = bool(nfz_discs)
+
     os.makedirs(args.out_dir, exist_ok=True)
-    if args.mask_nfz_target and (args.nfz_center is None
-                                 or args.nfz_radius is None):
-        raise SystemExit("--mask-nfz-target requires --nfz-center and "
-                         "--nfz-radius.")
+    if args.mask_nfz_target and not nfz_discs:
+        raise SystemExit("--mask-nfz-target requires at least one --nfz CX CY R disc.")
 
     # ---- Target ----
     from target_density import load_milano_target
-    target_nfz_c = tuple(args.nfz_center) if args.mask_nfz_target else None
-    target_nfz_r = float(args.nfz_radius) if args.mask_nfz_target else None
+    mask_discs = nfz_discs if args.mask_nfz_target else []
     if args.mask_nfz_target:
-        print(f"  Coverage target: NFZ-masked at c={target_nfz_c}, "
-              f"r={target_nfz_r}")
+        print(f"  Coverage target: NFZ-masked with {len(mask_discs)} disc(s): {mask_discs}")
     t_target = load_milano_target(args.milano_grid,
                                   smooth_sigma=args.smooth_sigma,
-                                  nfz_center=target_nfz_c,
-                                  nfz_radius=target_nfz_r)
+                                  nfz_discs=mask_discs)
     grid_smooth = t_target["grid"]
     target_smooth_pmf = t_target["pmf"]
 
     K, hk, lam = _build_basis(args.n_basis)
     phik = _phik_from_target(grid_smooth, K, hk)
-
-    nfz_on = (args.nfz_center is not None and args.nfz_radius is not None)
 
     # ---- Per-trajectory metrics ----
     per_run = []
@@ -535,8 +537,7 @@ def main():
         rec_out = {"method": method, "path": path, **cov, **kin}
 
         if nfz_on:
-            v = nfz_violations(pos, dt_native, args.nfz_center,
-                               args.nfz_radius)
+            v = nfz_violations(pos, dt_native, nfz_discs)
             rec_out.update({
                 "nfz_frac_inside":   v["frac_inside"] * 100.0,  # report %
                 "nfz_dwell_time_s":  v["dwell_time_s"],
@@ -584,8 +585,7 @@ def main():
         ["method"] + [c[1].split("$")[0].strip() or c[0] for c in HEADLINE_COLUMNS]))
 
     if nfz_on:
-        nfz_tex = render_nfz_latex(agg, method_order,
-                                   args.nfz_center, args.nfz_radius)
+        nfz_tex = render_nfz_latex(agg, method_order, nfz_discs)
         with open(os.path.join(args.out_dir, "nfz_table.tex"), "w") as f:
             f.write(nfz_tex + "\n")
         summary_txt += ["", "NFZ violation:", ""]

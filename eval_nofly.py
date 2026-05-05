@@ -59,21 +59,25 @@ def _segment_length_inside(p0, p1, c, r):
     return float((hi - lo) * np.linalg.norm(d))
 
 
-def violations(pos, dt, center, radius, scale_to_meters=None):
-    """Compute violation metrics for a single trajectory.
+def violations(pos, dt, discs, scale_to_meters=None):
+    """Compute violation metrics for a single trajectory against a union of discs.
 
     Args:
         pos: (N, 2) positions in normalised [-1, 1]^2 coords.
         dt: timestep (s).
-        center: (2,) disc centre, normalised coords.
-        radius: disc radius, normalised.
+        discs: list of (center, radius) pairs, e.g. [((0.19, 0.03), 0.10), ...].
+            A point is "inside" if it is inside ANY disc.
         scale_to_meters: optional float — multiply path lengths by this so the
             "path_inside" output is in metres. If None, output stays normalised.
     """
     pos = np.asarray(pos, dtype=np.float64)
-    c = np.asarray(center, dtype=np.float64)
-    dist = np.linalg.norm(pos - c, axis=1)
-    inside = dist <= radius
+
+    # Build combined inside mask (union of all discs)
+    inside = np.zeros(len(pos), dtype=bool)
+    for center, radius in discs:
+        c = np.asarray(center, dtype=np.float64)
+        inside |= np.linalg.norm(pos - c, axis=1) <= float(radius)
+
     n_inside = int(inside.sum())
     frac_inside = n_inside / max(len(pos), 1)
     dwell_s = n_inside * float(dt)
@@ -85,13 +89,26 @@ def violations(pos, dt, center, radius, scale_to_meters=None):
     else:
         n_incursions = 0
 
-    # max penetration depth (normalised)
-    max_depth = float((radius - dist[inside]).max()) if n_inside else 0.0
+    # max penetration depth: max over all discs of (r - dist(p, c)) for inside points
+    max_depth = 0.0
+    if n_inside:
+        depths = np.zeros(len(pos), dtype=np.float64)
+        for center, radius in discs:
+            c = np.asarray(center, dtype=np.float64)
+            d = float(radius) - np.linalg.norm(pos - c, axis=1)
+            depths = np.maximum(depths, d)
+        max_depth = float(depths[inside].max())
 
-    # path length inside (segment-clip for partial entries)
+    # path length inside (segment-clip for partial entries, union of all discs)
     L_norm = 0.0
     for i in range(len(pos) - 1):
-        L_norm += _segment_length_inside(pos[i], pos[i + 1], c, radius)
+        # a segment is inside if it overlaps any disc; accumulate max contribution
+        seg_len = 0.0
+        for center, radius in discs:
+            c = np.asarray(center, dtype=np.float64)
+            seg_len = max(seg_len,
+                          _segment_length_inside(pos[i], pos[i + 1], c, float(radius)))
+        L_norm += seg_len
     L_out = L_norm * (scale_to_meters if scale_to_meters else 1.0)
 
     return {
@@ -108,19 +125,33 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--traj", action="append", required=True,
                   help="label:path/to/trajectory.npz (repeatable)")
+    p.add_argument("--nfz", action="append", nargs=3, type=float,
+                  metavar=("CX", "CY", "R"), default=[],
+                  help="NFZ disc: cx cy radius (repeatable for multiple discs). "
+                       "E.g. --nfz 0.19 0.03 0.10 --nfz 0.3 0.3 0.15. "
+                       "When provided, overrides --center / --radius.")
     p.add_argument("--center", nargs=2, type=float, default=[0.19, 0.03],
-                  help="No-fly disc centre in normalised coords (default: density peak)")
+                  help="No-fly disc centre in normalised coords (default: density peak). "
+                       "Used only when --nfz is not given.")
     p.add_argument("--radius", type=float, default=0.1,
-                  help="No-fly disc radius in normalised coords (default: 0.1)")
+                  help="No-fly disc radius in normalised coords (default: 0.1). "
+                       "Used only when --nfz is not given.")
     p.add_argument("--meters-per-unit", type=float, default=None,
                   help="Optional scale factor; if given, path_inside is reported in metres.")
     p.add_argument("--out", default=None,
                   help="Optional JSON path to dump full results.")
     args = p.parse_args()
 
+    # Build disc list: --nfz takes priority; fall back to legacy --center / --radius
+    if args.nfz:
+        nfz_discs = [((cx, cy), r) for cx, cy, r in args.nfz]
+    else:
+        nfz_discs = [(tuple(args.center), float(args.radius))]
+
     rows = []
-    print(f"\nNo-fly zone: centre=({args.center[0]:.3f}, {args.center[1]:.3f}), "
-          f"radius={args.radius:.3f}\n")
+    disc_desc = "  ".join(
+        f"c=({c[0]:.3f},{c[1]:.3f}) r={r:.3f}" for c, r in nfz_discs)
+    print(f"\nNo-fly zone ({len(nfz_discs)} disc(s)): {disc_desc}\n")
     hdr_path = "path_inside_m" if args.meters_per_unit else "path_inside_norm"
     print(f"{'method':<18} {'N':>7} {'n_in':>7} {'frac_in':>9} "
           f"{'dwell_s':>9} {'incurs':>7} {'maxdepth':>9} {hdr_path:>14}")
@@ -132,7 +163,7 @@ def main():
         label, path = spec.split(":", 1)
         rec = TrajectoryRecord.from_npz(path)
         dt = float(rec.meta.get("dt_s", rec.times[1] - rec.times[0]))
-        v = violations(rec.pos, dt, args.center, args.radius,
+        v = violations(rec.pos, dt, nfz_discs,
                        scale_to_meters=args.meters_per_unit)
         v["method"] = label
         v["N"] = int(len(rec.pos))
@@ -149,8 +180,8 @@ def main():
                     exist_ok=True)
         with open(args.out, "w") as f:
             json.dump({
-                "center": list(args.center),
-                "radius": args.radius,
+                "nfz_discs": [[[float(c[0]), float(c[1])], float(r)]
+                               for c, r in nfz_discs],
                 "meters_per_unit": args.meters_per_unit,
                 "results": rows,
             }, f, indent=2)

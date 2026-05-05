@@ -139,15 +139,17 @@ def coverage_metrics(pos_unit, dt, target_pmf, target_smooth_pmf,
 # ---------------------------------------------------------------------------
 # NFZ prefix metrics
 # ---------------------------------------------------------------------------
-def nfz_prefix_metrics(pos_phys: np.ndarray, nfz_center, nfz_radius: float,
-                       ks: np.ndarray):
+def nfz_prefix_metrics(pos_phys: np.ndarray, discs, ks: np.ndarray):
     """Returns (nfz_frac[i], nfz_n_incursions[i]) at each prefix index ks[i].
 
-    nfz_frac         : fraction of points 0..k inside the NFZ disc.
-    nfz_n_incursions : number of outside→inside transitions up to k.
+    discs: list of (center, radius) pairs. A point is inside if inside ANY disc.
+    nfz_frac         : fraction of points 0..k inside any NFZ disc.
+    nfz_n_incursions : number of outside→inside transitions (union) up to k.
     """
-    c = np.asarray(nfz_center, dtype=np.float64)
-    inside = np.linalg.norm(pos_phys - c, axis=1) <= nfz_radius   # (T,)
+    inside = np.zeros(len(pos_phys), dtype=bool)
+    for center, radius in discs:
+        c = np.asarray(center, dtype=np.float64)
+        inside |= np.linalg.norm(pos_phys - c, axis=1) <= float(radius)
     cum_inside = np.cumsum(inside.astype(np.int64))                # (T,)
     entries = np.zeros(len(pos_phys), dtype=np.int64)
     if len(pos_phys) > 1:
@@ -183,20 +185,23 @@ def main():
                        "--target-T if both given). Pair with the eval_fair "
                        "--time-scale and --domain-size for the rescaled "
                        "UAV-mission protocol.")
+    p.add_argument("--nfz", action="append", nargs=3, type=float,
+                  metavar=("CX", "CY", "R"), default=[],
+                  help="NFZ disc: cx cy radius (repeatable for multiple discs). "
+                       "E.g. --nfz 0.19 0.03 0.10 --nfz 0.3 0.3 0.15")
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
-                  metavar=("CX", "CY"),
-                  help="No-fly disc centre in normalised coords (with "
-                       "--mask-nfz-target).")
+                  help=argparse.SUPPRESS)  # deprecated, use --nfz
     p.add_argument("--nfz-radius", type=float, default=None,
-                  help="No-fly disc radius (with --mask-nfz-target).")
+                  help=argparse.SUPPRESS)  # deprecated, use --nfz
     p.add_argument("--mask-nfz-target", action="store_true",
                   help="Compute coverage metrics against the NFZ-masked "
-                       "target. Requires --nfz-center / --nfz-radius.")
+                       "target. Requires at least one --nfz CX CY R disc.")
     args = p.parse_args()
-    if args.mask_nfz_target and (args.nfz_center is None
-                                 or args.nfz_radius is None):
-        raise SystemExit("--mask-nfz-target requires --nfz-center and "
-                         "--nfz-radius.")
+    nfz_discs = [((cx, cy), r) for cx, cy, r in (args.nfz or [])]
+    if args.nfz_center is not None and args.nfz_radius is not None:
+        nfz_discs.append((tuple(args.nfz_center), float(args.nfz_radius)))
+    if args.mask_nfz_target and not nfz_discs:
+        raise SystemExit("--mask-nfz-target requires at least one --nfz CX CY R disc.")
 
     os.makedirs(args.out_dir, exist_ok=True)
     rec = TrajectoryRecord.from_npz(args.traj)
@@ -238,15 +243,12 @@ def main():
 
     # Target setup
     from target_density import load_milano_target
-    target_nfz_c = tuple(args.nfz_center) if args.mask_nfz_target else None
-    target_nfz_r = float(args.nfz_radius) if args.mask_nfz_target else None
+    mask_discs = nfz_discs if args.mask_nfz_target else []
     if args.mask_nfz_target:
-        print(f"  Coverage target: NFZ-masked at c={target_nfz_c}, "
-              f"r={target_nfz_r}")
+        print(f"  Coverage target: NFZ-masked with {len(mask_discs)} disc(s): {mask_discs}")
     t_target = load_milano_target(args.milano_grid,
                                   smooth_sigma=args.smooth_sigma,
-                                  nfz_center=target_nfz_c,
-                                  nfz_radius=target_nfz_r)
+                                  nfz_discs=mask_discs)
     grid_smooth = t_target["grid"]
     target_smooth_pmf = t_target["pmf"]
     # raw (unsmoothed) PMF for L1/L2 reference
@@ -267,11 +269,12 @@ def main():
     ks = np.unique(
         np.round(np.geomspace(32, T - 1, args.n_eval_points)).astype(int)
     )
-    nfz_on = (args.nfz_center is not None and args.nfz_radius is not None)
+    nfz_on = bool(nfz_discs)
     if nfz_on:
-        nfz_fracs, nfz_incurs = nfz_prefix_metrics(
-            pos_phys, args.nfz_center, float(args.nfz_radius), ks)
-        print(f"NFZ on        : c={args.nfz_center}  r={args.nfz_radius}")
+        nfz_fracs, nfz_incurs = nfz_prefix_metrics(pos_phys, nfz_discs, ks)
+        disc_desc = "  ".join(
+            f"c=({c[0]:.3f},{c[1]:.3f}) r={r:.3f}" for c, r in nfz_discs)
+        print(f"NFZ on ({len(nfz_discs)} disc(s)): {disc_desc}")
 
     print(f"trajectory    : T={T} samples, dt={dt}s, total horizon={times[-1]:.2f}s")
     print(f"plan wall t   : {plan_s:.2f}s")
