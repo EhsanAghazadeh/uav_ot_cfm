@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --qos=short
-#SBATCH --job-name=prefix_curves_nfz
+#SBATCH --job-name=prefix_curves_nfz_center_0_3_0_3
 #SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
-#SBATCH --output=./slurm_output/%j_prefix_curves_nfz.out
-#SBATCH --error=./slurm_output/%j_prefix_curves_nfz.err
+#SBATCH --output=./slurm_output/%j_prefix_curves_nfz_center_0_3_0_3.out
+#SBATCH --error=./slurm_output/%j_prefix_curves_nfz_center_0_3_0_3.err
 #SBATCH --partition=cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -21,14 +21,35 @@ module load python/3.11.7
 source .venv/bin/activate
 
 GRID="data/milano_grid_corrected.npy"
-NFZ_C="0.19 0.03"
-NFZ_R="0.10"
 SEEDS=(21 42 63)
 
+# ── NFZ configuration ─────────────────────────────────────────────────────────
+# Single disc:
+#   NFZ_FLAGS="--nfz 0.19 0.03 0.10"
+#
+# Multiple discs (repeat --nfz once per disc: cx cy r):
+#   NFZ_FLAGS="--nfz 0.5 0.0 0.2 --nfz -0.5 0.0 0.2 --nfz 0.0 0.5 0.2 --nfz 0.0 -0.5 0.2"
+#
+NFZ_FLAGS="--nfz 0.19 0.03 0.10"
+# ─────────────────────────────────────────────────────────────────────────────
+
 ROOT_M=results_nfz_masked
-METHODS_M=(toes nonuniform_erg opt_transport sac
-           fmec_stein fmec_sinkhorn
-           otcfm_mask_only otcfm_mask_plus_penalty)
+# METHODS_M=(toes nonuniform_erg opt_transport sac
+#            fmec_stein fmec_sinkhorn
+#            otcfm_mask_only otcfm_mask_plus_penalty)
+
+METHODS_M=(
+    nonuniform_erg_nfz_center_0_3_0_3
+    # add baselines / OT-CFM variants trained against this same center:
+    # opt_transport_nfz_center_0_3_0_3
+    # toes_nfz_center_-0_6_-0_6
+    otcfm_mask_vel_lv0p1_nfz_l10_center_0_3_0_3
+    otcfm_mask_vel_lv0p1_center_0_3_0_3
+    otcfm_mask_only_la1e-2_center_0_3_0_3
+    otcfm_mask_plus_penalty_la10_le1_center_0_3_0_3
+    otcfm_mask_only_center_0_3_0_3_radius_0_3
+    otcfm_mask_plus_penalty_center_0_3_0_3_radius_0_3 
+)
 
 _ts() { case "$1" in toes*) echo "2.0";; fmec_stein*|fmec_sinkhorn*) echo "7.94";; *) echo "10.0";; esac; }
 
@@ -46,7 +67,7 @@ for m in "${METHODS_M[@]}"; do
         python eval_prefix_stop.py --traj "$TRAJ" \
             --milano-grid "$GRID" --smooth-sigma 1.5 \
             --time-scale "$(_ts "$m")" \
-            --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
+            $NFZ_FLAGS --mask-nfz-target \
             --out-dir "$OUT"
     done
 done
@@ -63,6 +84,6 @@ for m in "${METHODS_M[@]}"; do
     done
 done
 [ -n "$CURVE_ARGS" ] && python plot_curves.py $CURVE_ARGS \
-    --out-dir "${ROOT_M}/comparison_all_seeds"
+    --out-dir "${ROOT_M}/comparison_all_seeds_center_0_3_0_3_radius_0_3"
 
-echo "prefix_curves complete -> ${ROOT_M}/comparison_all_seeds/"
+echo "prefix_curves complete -> ${ROOT_M}/comparison_all_seeds_center_0_3_0_3_radius_0_3/"
