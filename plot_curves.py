@@ -276,6 +276,9 @@ def main():
 
         for nfz_key in nfz_keys:
             tag = "frac" if "frac" in nfz_key else "incursions"
+            plot_nfz_fixed_coverage(by_method,
+                                    os.path.join(od, f"nfz_fixed_cov_{cov_tag}_{tag}.png"),
+                                    cov_metric, nfz_key)
             plot_nfz_fixed_energy(by_method,
                                   os.path.join(od, f"nfz_fixed_energy_{cov_tag}_{tag}.png"),
                                   nfz_key)
