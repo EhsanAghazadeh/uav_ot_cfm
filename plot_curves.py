@@ -96,11 +96,9 @@ def _plot_group(ax, method, curves, x_key, y_key,
 # ---------------------------------------------------------------------------
 def plot_exp1_fixed_energy(by_method, out_path, metric):
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
-    e_lo = max(c["energy"][0]  for g in by_method.values() for c in g)
-    e_hi = min(c["energy"][-1] for g in by_method.values() for c in g)
     for method, curves in by_method.items():
         _plot_group(ax, method, curves, "energy", metric, log_x=True)
-    ax.set_xlim(e_lo, e_hi); ax.set_xscale("log")
+    ax.set_xscale("log")
     ax.set_xlabel("energy budget  $\\sum\\|v\\|^2\\cdot dt$")
     ax.set_ylabel(METRIC_LABELS[metric])
     ax.grid(alpha=0.3); ax.legend(fontsize=8)
