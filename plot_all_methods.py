@@ -48,16 +48,16 @@ def _panel(ax, grid, xlim, ylim, pos, label, nofly, vstats, max_points):
     cmap_traj = LinearSegmentedColormap.from_list(
         "ocfm", ["#ffd166", "#ef476f", "#073b4c"], N=256)
     ax.scatter(pos[idx, 0], pos[idx, 1], c=t_norm, cmap=cmap_traj,
-               s=1.5, alpha=0.5, linewidths=0, zorder=2,
+               s=1.5, alpha=0.5, linewidths=0, zorder=3,
                rasterized=True)
 
     for disc in (nofly or []):
         cx, cy, rr = disc
-        ax.add_patch(plt.Circle((cx, cy), rr, facecolor="#ff3b3b",
-                               alpha=0.18, edgecolor="none", zorder=3))
+        ax.add_patch(plt.Circle((cx, cy), rr, facecolor="white",
+                               alpha=1.0, edgecolor="none", zorder=2))
         ax.add_patch(plt.Circle((cx, cy), rr, facecolor="none",
                                edgecolor="#c40000", lw=2.0, ls="--",
-                               zorder=4))
+                               zorder=5))
 
     ax.plot(pos[0, 0], pos[0, 1], "o", color="black", ms=6,
             markeredgecolor="white", markeredgewidth=1.0, zorder=6)
