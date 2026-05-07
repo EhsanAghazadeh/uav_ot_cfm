@@ -156,7 +156,10 @@ def main():
                 mean_wc = None; std_wc = None; mean_str = "--"
             if infs:
                 mean_inf = float(np.mean(infs))
-                inf_str = fmt_time(mean_inf)
+                std_inf  = float(np.std(infs))
+                inf_str  = fmt_time(mean_inf)
+                if len(infs) > 1 and std_inf > 0:
+                    inf_str += rf" $\pm$ {fmt_time(std_inf)}"
             else:
                 mean_inf = None
                 inf_str = r"$=$ per-scenario"
