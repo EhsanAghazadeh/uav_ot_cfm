@@ -80,23 +80,33 @@ def find_runs(root, prefix):
 
 
 def wall_clock_seconds(meta):
-    """Best-effort extract of total per-scenario wall-clock (seconds)."""
-    keys = ["plan_wall_clock_s",      # consolidated key set by most planners
-            "train_wall_clock_s"]     # otcfm uses (train + transport)
-    for k in keys:
-        if k in meta:
-            t = float(meta[k])
-            # OT-CFM splits across keys; sum if both present
-            if k == "train_wall_clock_s":
-                t += float(meta.get("transport_wall_clock_s", 0.0))
-                t += float(meta.get("latent_gen_wall_clock_s", 0.0))
-            return t
-    # baselines that report sub-keys directly
-    s = 0.0
-    for k in ("train_wall_clock_s", "rollout_wall_clock_s",
-              "transport_wall_clock_s", "latent_gen_wall_clock_s"):
-        s += float(meta.get(k, 0.0))
+    """Total per-scenario wall-clock (training + inference) in seconds."""
+    if "plan_wall_clock_s" in meta:
+        return float(meta["plan_wall_clock_s"])
+    if "train_wall_clock_s" in meta:
+        # OT-CFM: train + latent gen + transport
+        t = float(meta["train_wall_clock_s"])
+        t += float(meta.get("transport_wall_clock_s", 0.0))
+        t += float(meta.get("latent_gen_wall_clock_s", 0.0))
+        return t
+    s = sum(float(meta.get(k, 0.0)) for k in (
+        "train_wall_clock_s", "rollout_wall_clock_s",
+        "transport_wall_clock_s", "latent_gen_wall_clock_s"))
     return s if s > 0 else None
+
+
+def inference_seconds(meta):
+    """Per-trajectory inference cost once the model is trained.
+
+    For OT-CFM this is latent generation + ODE transport (milliseconds).
+    For baselines there is no training/inference split, so returns None
+    (caller renders it as '= per-scenario').
+    """
+    lat = meta.get("latent_gen_wall_clock_s")
+    trp = meta.get("transport_wall_clock_s")
+    if lat is not None or trp is not None:
+        return float(lat or 0.0) + float(trp or 0.0)
+    return None
 
 
 def fmt_time(t):
@@ -124,35 +134,45 @@ def main():
     # etc., to give a representative training time.
     rows = []
     print(f"\nAmortization wall-clocks ({args.root}/<method>_seed*):")
-    print("-" * 70)
+    print(f"  {'Method':<25s}  {'Per-scenario':<18s}  {'Inference':<18s}  n")
+    print("-" * 75)
     for spec in METHODS:
         runs = find_runs(args.root, spec["prefix"])
         if not runs:
-            mean_wc = None; std_wc = None; n = 0
-            mean_str = "--"
+            mean_wc = None; std_wc = None
+            mean_inf = None; n = 0
+            mean_str = "--"; inf_str = "--"
         else:
-            wcs = [wall_clock_seconds(m) for _, m in runs]
-            wcs = [w for w in wcs if w is not None]
-            if not wcs:
-                mean_wc = None; std_wc = None
-                mean_str = "--"
-            else:
-                mean_wc = float(np.mean(wcs))
-                std_wc = float(np.std(wcs))
+            wcs = [w for w in (wall_clock_seconds(m) for _, m in runs)
+                   if w is not None]
+            infs = [w for w in (inference_seconds(m) for _, m in runs)
+                    if w is not None]
+            if wcs:
+                mean_wc = float(np.mean(wcs)); std_wc = float(np.std(wcs))
                 mean_str = fmt_time(mean_wc)
                 if len(wcs) > 1 and std_wc > 0:
-                    mean_str += rf" $\pm$ {fmt_time(std_wc)}".replace(" ", "")
+                    mean_str += rf" $\pm$ {fmt_time(std_wc)}"
+            else:
+                mean_wc = None; std_wc = None; mean_str = "--"
+            if infs:
+                mean_inf = float(np.mean(infs))
+                inf_str = fmt_time(mean_inf)
+            else:
+                mean_inf = None
+                inf_str = r"$=$ per-scenario"
             n = len(wcs)
         rows.append({
             "name": spec["name"],
             "wall_clock": mean_str,
             "wall_clock_s": mean_wc,
             "wall_clock_std_s": std_wc,
+            "inference": inf_str,
+            "inference_s": mean_inf,
             "multi_n10": spec["multi_n10"],
             "per_target": spec["per_target"],
             "n_seeds": n,
         })
-        print(f"  {spec['name']:<25s}  {mean_str:<20s}  (n={n})")
+        print(f"  {spec['name']:<25s}  {mean_str:<18s}  {inf_str:<18s}  {n}")
 
     # Render LaTeX
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".",
@@ -171,13 +191,13 @@ def main():
         f.write(r"\label{tab:amortization}" + "\n")
         f.write(r"\small" + "\n")
         f.write(r"\setlength{\tabcolsep}{4pt}" + "\n")
-        f.write(r"\begin{tabular}{lccc}" + "\n")
+        f.write(r"\begin{tabular}{lcccc}" + "\n")
         f.write(r"\toprule" + "\n")
-        f.write(r"Method & Per-scenario & Multi-agent ($N{=}10$) & "
-                r"Per-new-target \\" + "\n")
+        f.write(r"Method & Per-scenario & Inference & "
+                r"Multi-agent ($N{=}10$) & Per-new-target \\" + "\n")
         f.write(r"\midrule" + "\n")
         for r in rows:
-            f.write(f"{r['name']} & {r['wall_clock']} & "
+            f.write(f"{r['name']} & {r['wall_clock']} & {r['inference']} & "
                     f"{r['multi_n10']} & {r['per_target']} \\\\" + "\n")
         f.write(r"\bottomrule" + "\n")
         f.write(r"\end{tabular}" + "\n")
