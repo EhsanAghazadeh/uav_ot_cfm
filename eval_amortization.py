@@ -123,21 +123,27 @@ def fmt_time(t):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--root", default="results",
-                   help="Directory containing <method>_seed<S>/ subdirs.")
+    p.add_argument("--root", action="append", default=None,
+                   help="Directory containing <method>_seed<S>/ subdirs. "
+                        "Repeatable — seeds from all roots are pooled per method.")
     p.add_argument("--out", required=True,
                    help="Output .tex path for the LaTeX table.")
     args = p.parse_args()
+    if args.root is None:
+        args.root = ["results"]
 
     # Special case: OT-CFM has many sub-variants. We aggregate over the
     # "vanilla" otcfm_seed<S> dirs and ignore otcfm_nfz_l5, otcfm_energy_*
     # etc., to give a representative training time.
+    roots_str = " + ".join(args.root)
     rows = []
-    print(f"\nAmortization wall-clocks ({args.root}/<method>_seed*):")
+    print(f"\nAmortization wall-clocks ({roots_str}):")
     print(f"  {'Method':<25s}  {'Per-scenario':<18s}  {'Inference':<18s}  n")
     print("-" * 75)
     for spec in METHODS:
-        runs = find_runs(args.root, spec["prefix"])
+        runs = []
+        for root in args.root:
+            runs.extend(find_runs(root, spec["prefix"]))
         if not runs:
             mean_wc = None; std_wc = None
             mean_inf = None; n = 0
