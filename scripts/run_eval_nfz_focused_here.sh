@@ -65,7 +65,7 @@ for m in "${METHODS[@]}"; do
         if [ -f "${OUT}/prefix_curve.npz" ]; then
             echo "  skip cached $OUT"; continue
         fi
-        python eval_prefix_stop.py --traj "$TRAJ" \
+        python -m evaluation.eval_prefix_stop --traj "$TRAJ" \
             --milano-grid "$GRID" --smooth-sigma 1.5 \
             --time-scale $TIME_SCALE \
             --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
@@ -82,7 +82,7 @@ for m in "${METHODS[@]}"; do
     done
 done
 if [ -n "$ARGS" ]; then
-    python plot_curves.py $ARGS --out-dir "$COMPARISON_DIR"
+    python -m plotting.plot_curves $ARGS --out-dir "$COMPARISON_DIR"
 fi
 
 # 3) Trajectory grid w/ NFZ overlay (one panel per method+seed)
@@ -94,7 +94,7 @@ for m in "${METHODS[@]}"; do
     done
 done
 if [ -n "$ARGS" ]; then
-    python plot_all_methods.py $ARGS \
+    python -m plotting.plot_all_methods $ARGS \
         --milano-grid "$GRID" \
         --nofly $NFZ_C $NFZ_R \
         --suptitle "NFZ-masked Milano @ ($NFZ_C), r=$NFZ_R" \
@@ -110,17 +110,17 @@ for m in "${METHODS[@]}"; do
     done
 done
 if [ -n "$ARGS" ]; then
-    python eval_fair.py $ARGS \
+    python -m evaluation.eval_fair $ARGS \
         --milano-grid "$GRID" \
         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
         --v-clip-realistic $V_CAP_REALISTIC \
         --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
         --out-dir "$FAIR_DIR"
-    python plot_pareto.py \
+    python -m plotting.plot_pareto \
         --per-run "${FAIR_DIR}/per_run.json" \
         --out-dir "$FAIR_DIR"
     # Velocity distribution (3-panel)
-    python plot_velocity_distribution.py $ARGS \
+    python -m plotting.plot_velocity_distribution $ARGS \
         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
         --v-cap-realistic $V_CAP_REALISTIC \
         --out-dir "$VEL_DIR"

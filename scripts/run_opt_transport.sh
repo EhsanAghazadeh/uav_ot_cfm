@@ -21,6 +21,6 @@ SEEDS=(21 42 63)
 SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
 OUT=results/opt_transport_seed${SEED}
 
-python run_baseline_milano.py --method opt_transport \
+python -m experiments.milano.run_baseline_milano --method opt_transport \
     --num-points 25600 --dt 0.01 \
     --seed $SEED --out-dir $OUT

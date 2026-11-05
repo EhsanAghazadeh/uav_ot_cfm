@@ -25,11 +25,11 @@ S=$((i % 3))
 if [ "$i" -lt 18 ]; then
     DELTAS=(0.005 0.01 0.02 0.05 0.1 0.2)
     D=${DELTAS[$((i / 3))]}
-    python train_synth.py --delta "$D" --seed "$S" --sn-cap 0 --epochs 1000 \
+    python -m experiments.appendix.train_synth --delta "$D" --seed "$S" --sn-cap 0 --epochs 1000 \
         --out-dir "results/appendix/delta_ablation/delta${D}_seed${S}"
 else
     CAPS=(3 5 8)
     C=${CAPS[$(((i - 18) / 3))]}
-    python train_synth.py --seed "$S" --sn-cap "$C" --epochs 1000 \
+    python -m experiments.appendix.train_synth --seed "$S" --sn-cap "$C" --epochs 1000 \
         --out-dir "results/appendix/sn_certified/cap${C}_seed${S}"
 fi

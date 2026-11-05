@@ -21,7 +21,7 @@ SEEDS=(21 42 63)
 SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
 OUT=results/toes_seed${SEED}
 
-python run_baseline_milano.py --method toes \
+python -m experiments.milano.run_baseline_milano --method toes \
     --t-total 1280 --n-knots 25600 --n-basis 50 --u-max 0.05 \
     --max-iter 30000 --seed $SEED \
     --out-dir $OUT

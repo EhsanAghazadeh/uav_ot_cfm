@@ -15,8 +15,8 @@
 #   5-9    Experiment 2 (binary 3:1 density)
 #   10-14  Experiment 3 (no-fly zone; unconstrained, +NFZ, +NFZ+acc)
 # Submit from the repo root:  sbatch scripts/synthetic_multiseed.sh
-# Single seed-42 runs: python code_synthetic/experiment_0{1,2}_*.py and
-#                      python code_synthetic/experiment_03_revised_v2.py
+# Single seed-42 runs: python experiments/synthetic/experiment_0{1,2}_*.py and
+#                      python experiments/synthetic/experiment_03_revised_v2.py
 
 set -euo pipefail
 mkdir -p slurm_output
@@ -26,4 +26,4 @@ source .venv/bin/activate
 
 i=$SLURM_ARRAY_TASK_ID
 MODES=(exp1 exp2 exp3)
-python code_synthetic/run_multiseed.py "${MODES[$((i / 5))]}" --seed "$((i % 5))"
+python experiments/synthetic/run_multiseed.py "${MODES[$((i / 5))]}" --seed "$((i % 5))"

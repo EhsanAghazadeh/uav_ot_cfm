@@ -21,7 +21,7 @@ SEEDS=(21 42 63)
 SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
 OUT=results/sac_seed${SEED}
 
-python run_baseline_milano.py --method sac \
+python -m experiments.milano.run_baseline_milano --method sac \
     --num-points 25600 --sac-train-steps 500000 \
     --sac-grid-size 50 --sac-comm-range 0.18 --dt 0.01 \
     --seed $SEED --out-dir $OUT

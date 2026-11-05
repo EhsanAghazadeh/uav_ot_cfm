@@ -27,7 +27,7 @@ source .venv/bin/activate
 OUT=results_nfz_masked/otcfm_energy_la1e-1_nfz_l500_le1e-3_seed63_rerun
 mkdir -p "$OUT"
 
-python run_otcfm_milano.py \
+python -m experiments.milano.run_otcfm_milano \
     --arch v1 --hidden-dim 256 --n-layers 12 \
     --epochs 3000 --batch-size 2048 \
     --n-cycles 128 --pts-per-cycle 200 --transport-steps 30 \

@@ -43,7 +43,7 @@ for m in "${METHODS[@]}"; do
     done
 done
 
-python eval_fair.py "${ARGS[@]}" \
+python -m evaluation.eval_fair "${ARGS[@]}" \
     --milano-grid data/milano_grid_corrected.npy \
     --domain-size 200.0 --time-scale 10.0 \
     --method-time-scale toes:2.0 \
@@ -52,6 +52,6 @@ python eval_fair.py "${ARGS[@]}" \
     --v-clip-realistic 30.0 \
     "${NFZ[@]}" --mask-nfz-target \
     --out-dir "${ROOT}/fair_metrics_rescaled"
-python plot_pareto.py \
+python -m plotting.plot_pareto \
     --per-run "${ROOT}/fair_metrics_rescaled/per_run.json" \
     --out-dir "${ROOT}/fair_metrics_rescaled"

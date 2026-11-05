@@ -23,7 +23,7 @@ which python && python --version
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 
-python make_flow_animation.py \
+python -m plotting.make_flow_animation \
     --model results/otcfm_seed42:otcfm \
     --model results_nfz_masked/otcfm_nfz_l5_seed42:otcfm_nfz \
     --n-particles 30000 --n-steps 60 \

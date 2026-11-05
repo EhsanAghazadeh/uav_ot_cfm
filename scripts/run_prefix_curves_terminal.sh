@@ -36,7 +36,7 @@ for m in "${METHODS_M[@]}"; do
         [ -f "${OUT}/prefix_curve.npz" ] && { echo "  cached $m seed$s"; continue; }
         [ ! -f "$TRAJ" ] && { echo "  skip missing $TRAJ"; continue; }
         echo "  eval $m seed$s"
-        python eval_prefix_stop.py --traj "$TRAJ" \
+        python -m evaluation.eval_prefix_stop --traj "$TRAJ" \
             --milano-grid "$GRID" --smooth-sigma 1.5 \
             --time-scale "$(_ts "$m")" \
             --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
@@ -55,7 +55,7 @@ for m in "${METHODS_M[@]}"; do
         [ -f "$C" ] && CURVE_ARGS="$CURVE_ARGS --curve ${m}:${C}"
     done
 done
-[ -n "$CURVE_ARGS" ] && python plot_curves.py $CURVE_ARGS \
+[ -n "$CURVE_ARGS" ] && python -m plotting.plot_curves $CURVE_ARGS \
     --out-dir "${ROOT_M}/comparison_all_seeds"
 
 echo "prefix_curves complete -> ${ROOT_M}/comparison_all_seeds/"

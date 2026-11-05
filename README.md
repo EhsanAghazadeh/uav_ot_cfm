@@ -43,23 +43,33 @@ Tested with Python 3.11, PyTorch ≥ 2.2, POT ≥ 0.9.
 
 ## Repository layout
 
-| Path | Contents |
-|---|---|
-| `ot_cfm.py`, `latent_trajectory.py` | Velocity networks, OT (Sinkhorn) coupling, RK4 transport; annular latent domain $D_\delta$ and the radial latent trajectory |
-| `run_otcfm_milano.py` | Train OT-CFM on Milano (with optional NFZ / energy / acceleration penalties) and roll out a trajectory |
-| `run_baseline_milano.py`, `run_baseline_milano_v1.py`, `milano_baselines.py`, `toes_baseline.py` | Baselines: TOES, time-warping (NonUniformErg), static OT, SAC, FMEC-Stein / FMEC-Sinkhorn |
-| `target_density.py`, `data/milano_grid_corrected.npy` | Milano demand density (50×50 grid) and loader with NFZ masking |
-| `eval_fair.py`, `eval_prefix_stop.py`, `eval_nofly.py`, `eval_multi_agent.py`, `eval_amortization.py`, `eval_sampling_table.py` | Coverage, energy (Zeng rotary-wing model), NFZ violation, fleet and amortization metrics |
-| `plot_*.py`, `method_style.py` | Paper figures (Pareto curves, trajectory grids, flow evolution) |
-| `code_synthetic/` | Synthetic Experiments 1–3 (Gaussian mixture, binary 3:1 density, no-fly-zone constraints) |
-| `train_synth.py`, `train_synth3d.py` | Appendix studies: latent radius $\delta$ ablation, spectral-norm certified bound, 3D extension |
-| `eval_tracking_error.py`, `eval_turnaround_accounting.py`, `eval_fleet_separation.py`, `eval_expurgation_pv.py` | Appendix evaluations on saved Milano trajectories |
-| `make_flow_animation.py` | Exports the latent → target flow animation used on the project page |
-| `scripts/` | SLURM launchers for every experiment (3 seeds: 21, 42, 63 via `--array`) |
+```
+ergodic_cfm/              the method and shared utilities (importable package)
+  ot_cfm.py                 velocity networks, OT (Sinkhorn) coupling, RK4 transport
+  latent_trajectory.py      annular latent domain D_delta and the radial latent path
+  target_density.py         Milano demand density loader with NFZ masking
+  fair_comparison.py        canonical trajectory.npz format
+  method_style.py           shared method names and colours for figures
+  baselines/                TOES, time-warping, static OT, SAC, FMEC + Zeng energy model
+experiments/
+  milano/                   train OT-CFM / run baselines on Milano (Table 1)
+  synthetic/                Experiments 1-3 (self-contained, run by path)
+  appendix/                 delta ablation, spectral-norm bound, 3D, tracking,
+                            turnaround, fleet separation, expurgation
+evaluation/               coverage, energy, NFZ violation, fleet, amortization metrics
+plotting/                 paper figures and the project-page flow animation
+scripts/                  SLURM launchers for every experiment (seeds 21, 42, 63)
+data/milano_grid_corrected.npy   Milano demand grid (50x50)
+```
+
+Run every entry point **from the repository root** as a module, e.g.
+`python -m experiments.milano.run_otcfm_milano --help`. The synthetic
+experiments are the exception: they are self-contained scripts, run as
+`python experiments/synthetic/<script>.py`.
 
 Every method writes a canonical `trajectory.npz` (`pos`, `times`, `domain`,
-`method`, `meta`; see `fair_comparison.py`), so all evaluators are
-method-agnostic.
+`method`, `meta`; see `ergodic_cfm/fair_comparison.py`), so all evaluators
+are method-agnostic.
 
 ## Reproducing the paper
 
@@ -71,10 +81,10 @@ Python command, so it can be run without SLURM.
 ### Synthetic experiments (Section 4.1)
 
 ```bash
-python code_synthetic/experiment_01_gaussian_mixture.py   # Experiment 1
-python code_synthetic/experiment_02_binary_density.py     # Experiment 2
-python code_synthetic/experiment_03_revised_v2.py         # Experiment 3 (NFZ at (0.5,-0.5), r = 0.2)
-sbatch scripts/synthetic_multiseed.sh                     # Experiments 1-3 over seeds 0-4
+python experiments/synthetic/experiment_01_gaussian_mixture.py   # Experiment 1
+python experiments/synthetic/experiment_02_binary_density.py     # Experiment 2
+python experiments/synthetic/experiment_03_revised_v2.py         # Experiment 3 (NFZ at (0.5,-0.5), r = 0.2)
+sbatch scripts/synthetic_multiseed.sh                            # Experiments 1-3 over seeds 0-4
 ```
 
 ### Milano UAV coverage (Section 4.2, Table 1)

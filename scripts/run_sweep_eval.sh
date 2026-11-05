@@ -36,14 +36,14 @@ for combo in "${COMBOS[@]}"; do
         if [ -f "${OUT}/prefix_curve.npz" ]; then
             echo "skip cached $OUT"; continue
         fi
-        python eval_prefix_stop.py --traj "$TRAJ" \
+        python -m evaluation.eval_prefix_stop --traj "$TRAJ" \
             --milano-grid data/milano_grid_corrected.npy \
             --smooth-sigma 1.5 --out-dir "$OUT"
     done
 done
 
 # 2. Pick winners + emit LaTeX tables + composite plots.
-python pick_sweep_winners.py \
+python -m experiments.milano.pick_sweep_winners \
     --sweep-root results \
     --milano-grid data/milano_grid_corrected.npy \
     --nfz-center 0.19 0.03 --nfz-radius 0.10 \

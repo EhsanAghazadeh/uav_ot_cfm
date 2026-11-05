@@ -21,7 +21,7 @@ SEEDS=(21 42 63)
 SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
 OUT=results_nfz_masked/nonuniform_erg_nfz_center_0_3_0_3_seed${SEED}
 
-python run_baseline_milano.py --method nonuniform_erg \
+python -m experiments.milano.run_baseline_milano --method nonuniform_erg \
     --num-intervals 64 --points-per-interval 200 --dt 0.01 \
     --nfz-center 0.3 0.3 --nfz-radius 0.3 --mask-nfz-target \
     --seed $SEED --out-dir $OUT

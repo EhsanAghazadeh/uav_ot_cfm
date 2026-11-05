@@ -46,7 +46,7 @@ fi
 OUT=${ROOT}/${NAMES[$V]}_seed${SEED}
 echo "[table1] ${LABEL[$V]}  cfg=$CFG  seed=$SEED  out=$OUT"
 
-python run_otcfm_milano.py \
+python -m experiments.milano.run_otcfm_milano \
     --arch v1 --hidden-dim 256 --n-layers 12 \
     --epochs 3000 --batch-size 2048 \
     --delta 0.05 --n-cycles 128 --pts-per-cycle 200 --transport-steps 30 \

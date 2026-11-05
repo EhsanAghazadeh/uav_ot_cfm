@@ -36,7 +36,7 @@ OUT=results/sweep_v3_sigma/sigma${SIGMA}_seed${SEED}_le1e-2
 mkdir -p "$(dirname "$OUT")"
 echo "[sweep_v3_sigma] task=$SLURM_ARRAY_TASK_ID  sigma_x=$SIGMA  out=$OUT"
 
-python run_otcfm_milano.py \
+python -m experiments.milano.run_otcfm_milano \
     --arch v3 --hidden-dim 256 --n-layers 12 \
     --n-time-freqs 16 --n-spatial-freqs 16 --sigma-x $SIGMA \
     --ema-decay 0.999 \

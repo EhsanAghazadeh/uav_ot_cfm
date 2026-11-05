@@ -62,7 +62,7 @@ mkdir -p "$OUT"
 echo "[sweep_fmec] task=$i  cond=$COND  method=$V  seed=$S  out=$OUT"
 
 if [[ "$V" == "fmec_stein" ]]; then
-  python run_baseline_milano_v1.py --method fmec_stein \
+  python -m experiments.milano.run_baseline_milano_v1 --method fmec_stein \
     --milano-grid "$GRID" --seed "$S" \
     --fmec-dt "$FMEC_DT" --fmec-tsteps "$FMEC_TSTEPS" \
     --fmec-num-iters "$STEIN_ITERS" --fmec-step-size "$STEIN_STEP" \
@@ -71,7 +71,7 @@ if [[ "$V" == "fmec_stein" ]]; then
     "${NFZ_FLAGS[@]}" \
     --out-dir "$OUT"
 else
-  python run_baseline_milano_v1.py --method fmec_sinkhorn \
+  python -m experiments.milano.run_baseline_milano_v1 --method fmec_sinkhorn \
     --milano-grid "$GRID" --seed "$S" \
     --fmec-dt "$FMEC_DT" --fmec-tsteps "$FMEC_TSTEPS" \
     --fmec-num-iters "$SINK_ITERS" --fmec-step-size "$SINK_STEP" \

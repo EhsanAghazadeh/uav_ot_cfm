@@ -29,7 +29,7 @@ OUT=results/sweep_nfz/lnfz${LNFZ}_seed${SEED}
 mkdir -p "$(dirname "$OUT")"
 echo "[sweep_nfz] task=$SLURM_ARRAY_TASK_ID  lambda_nfz=$LNFZ  out=$OUT"
 
-python run_otcfm_milano.py \
+python -m experiments.milano.run_otcfm_milano \
     --arch v1 --hidden-dim 256 --n-layers 12 \
     --epochs 3000 --batch-size 2048 \
     --n-cycles 128 --pts-per-cycle 200 --transport-steps 30 \

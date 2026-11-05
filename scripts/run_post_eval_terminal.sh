@@ -71,7 +71,7 @@ METHODS=(toes nonuniform_erg opt_transport sac
 
 # if [ -n "$ARGS" ]; then
 #     echo "=== Block A.1: rescaled fair eval (unmasked) ==="
-#     python eval_fair.py $ARGS \
+#     python -m evaluation.eval_fair $ARGS \
 #         --milano-grid "$GRID" \
 #         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
 #         --method-time-scale toes:2.0 \
@@ -80,7 +80,7 @@ METHODS=(toes nonuniform_erg opt_transport sac
 #         --v-clip-realistic $V_CAP_REALISTIC \
 #         --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
 #         --out-dir "${ROOT}/fair_metrics_rescaled"
-#     python plot_pareto.py \
+#     python -m plotting.plot_pareto \
 #         --per-run "${ROOT}/fair_metrics_rescaled/per_run.json" \
 #         --out-dir "${ROOT}/fair_metrics_rescaled"
 # fi
@@ -109,7 +109,7 @@ done
 
 if [ -n "$ARGS" ]; then
     echo "=== Block A.2: rescaled fair eval (NFZ-masked target) ==="
-    python eval_fair.py $ARGS \
+    python -m evaluation.eval_fair $ARGS \
         --milano-grid "$GRID" \
         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
         --method-time-scale toes:2.0 \
@@ -118,7 +118,7 @@ if [ -n "$ARGS" ]; then
         --v-clip-realistic $V_CAP_REALISTIC \
         --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
         --out-dir "${ROOT_M}/fair_metrics_rescaled"
-    python plot_pareto.py \
+    python -m plotting.plot_pareto \
         --per-run "${ROOT_M}/fair_metrics_rescaled/per_run.json" \
         --out-dir "${ROOT_M}/fair_metrics_rescaled"
 fi
@@ -130,7 +130,7 @@ fi
 # MA_MODEL="results/otcfm_seed42"
 # if [ -f "${MA_MODEL}/model.pt" ] && [ -f "${MA_MODEL}/plan_meta.json" ]; then
 #     echo "=== Block B: multi-agent ablation ==="
-#     python eval_multi_agent.py \
+#     python -m evaluation.eval_multi_agent \
 #         --model-dir "$MA_MODEL" \
 #         --milano-grid "$GRID" \
 #         --fleet-sizes 1 2 5 10 20 \
@@ -145,17 +145,17 @@ fi
 # Block C -- amortization wall-clock table
 # ---------------------------------------------------------------------------
 # echo "=== Block C: amortization + sampling-protocol tables ==="
-# python eval_amortization.py \
+# python -m evaluation.eval_amortization \
 #     --root results \
 #     --out results/fair_metrics_rescaled/amortization.tex
 # if [ -f "results/fair_metrics_rescaled/per_run.json" ]; then
-#     python eval_sampling_table.py \
+#     python -m evaluation.eval_sampling_table \
 #         --per-run results/fair_metrics_rescaled/per_run.json \
 #         --root results \
 #         --out results/fair_metrics_rescaled/sampling_protocol.tex
 # fi
 # if [ -f "results_nfz_masked/fair_metrics_rescaled/per_run.json" ]; then
-#     python eval_sampling_table.py \
+#     python -m evaluation.eval_sampling_table \
 #         --per-run results_nfz_masked/fair_metrics_rescaled/per_run.json \
 #         --root results_nfz_masked \
 #         --label tab:sampling_nfz_masked \
@@ -175,7 +175,7 @@ for m in "${METHODS[@]}"; do
     done
 done
 if [ -n "$ARGS" ]; then
-    python plot_velocity_distribution.py $ARGS \
+    python -m plotting.plot_velocity_distribution $ARGS \
         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
         --v-cap-realistic $V_CAP_REALISTIC \
         --out-dir "${ROOT}/velocity_dist"
@@ -201,7 +201,7 @@ for m in "${METHODS[@]}"; do
         OUT="${ROOT}/${m}_seed${s}/curves"
         [ -f "${OUT}/prefix_curve.npz" ] && continue
         [ ! -f "$TRAJ" ] && { echo "  skip missing $TRAJ"; continue; }
-        python eval_prefix_stop.py --traj "$TRAJ" \
+        python -m evaluation.eval_prefix_stop --traj "$TRAJ" \
             --milano-grid "$GRID" --smooth-sigma 1.5 \
             --time-scale "$(_ts "$m")" \
             --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
@@ -216,7 +216,7 @@ for m in "${METHODS_M[@]}"; do
         OUT="${ROOT_M}/${m}_seed${s}/curves"
         [ -f "${OUT}/prefix_curve.npz" ] && continue
         [ ! -f "$TRAJ" ] && { echo "  skip missing $TRAJ"; continue; }
-        python eval_prefix_stop.py --traj "$TRAJ" \
+        python -m evaluation.eval_prefix_stop --traj "$TRAJ" \
             --milano-grid "$GRID" --smooth-sigma 1.5 \
             --time-scale "$(_ts "$m")" \
             --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
@@ -237,7 +237,7 @@ for m in "${METHODS[@]}"; do
         [ -f "$C" ] && CURVE_ARGS="$CURVE_ARGS --curve ${m}:${C}"
     done
 done
-[ -n "$CURVE_ARGS" ] && python plot_curves.py $CURVE_ARGS \
+[ -n "$CURVE_ARGS" ] && python -m plotting.plot_curves $CURVE_ARGS \
     --out-dir "${ROOT}/comparison_all_seeds"
 
 echo "=== Block F: aggregated prefix-curve plots (results_nfz_masked/) ==="
@@ -248,7 +248,7 @@ for m in "${METHODS_M[@]}"; do
         [ -f "$C" ] && CURVE_ARGS="$CURVE_ARGS --curve ${m}:${C}"
     done
 done
-[ -n "$CURVE_ARGS" ] && python plot_curves.py $CURVE_ARGS \
+[ -n "$CURVE_ARGS" ] && python -m plotting.plot_curves $CURVE_ARGS \
     --out-dir "${ROOT_M}/comparison_all_seeds"
 
 

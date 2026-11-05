@@ -24,5 +24,5 @@ SEEDS=(0 1 2)
 i=$SLURM_ARRAY_TASK_ID
 D=${DELTAS[$((i / 3))]}
 S=${SEEDS[$((i % 3))]}
-python train_synth3d.py --delta "$D" --seed "$S" --epochs 1000 \
+python -m experiments.appendix.train_synth3d --delta "$D" --seed "$S" --epochs 1000 \
     --out-dir "results/appendix/synth3d/delta${D}_seed${S}"

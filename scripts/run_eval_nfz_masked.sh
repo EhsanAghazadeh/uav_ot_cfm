@@ -41,7 +41,7 @@ for m in "${METHODS[@]}"; do
         OUT=${ROOT}/${m}_seed${s}/curves
         if [ ! -f "$TRAJ" ]; then echo "skip missing $TRAJ"; continue; fi
         if [ -f "${OUT}/prefix_curve.npz" ]; then echo "skip cached $OUT"; continue; fi
-        python eval_prefix_stop.py --traj "$TRAJ" \
+        python -m evaluation.eval_prefix_stop --traj "$TRAJ" \
             --milano-grid data/milano_grid_corrected.npy \
             --smooth-sigma 1.5 \
             --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
@@ -58,7 +58,7 @@ for s in "${SEEDS[@]}"; do
         [ -f "$T" ] && ARGS="$ARGS --traj ${m}:${T}"
     done
     if [ -n "$ARGS" ]; then
-        python eval_nofly.py $ARGS \
+        python -m evaluation.eval_nofly $ARGS \
             --center $NFZ_C --radius $NFZ_R \
             --out ${ROOT}/nofly_seed${s}.json
     fi
@@ -71,7 +71,7 @@ for s in "${SEEDS[@]}"; do
         C=${ROOT}/${m}_seed${s}/curves/prefix_curve.npz
         [ -f "$C" ] && ARGS="$ARGS --curve ${m}:${C}"
     done
-    [ -n "$ARGS" ] && python plot_curves.py $ARGS \
+    [ -n "$ARGS" ] && python -m plotting.plot_curves $ARGS \
         --out-dir ${ROOT}/comparison_seed${s}
 done
 
@@ -82,7 +82,7 @@ for s in "${SEEDS[@]}"; do
         T=${ROOT}/${m}_seed${s}/trajectory.npz
         [ -f "$T" ] && ARGS="$ARGS --traj ${m}:${T}"
     done
-    [ -n "$ARGS" ] && python plot_all_methods.py $ARGS \
+    [ -n "$ARGS" ] && python -m plotting.plot_all_methods $ARGS \
         --milano-grid data/milano_grid_corrected.npy \
         --nofly $NFZ_C $NFZ_R \
         --suptitle "NFZ-masked Milano (seed=${s})" \
@@ -98,14 +98,14 @@ for m in "${METHODS[@]}"; do
     done
 done
 if [ -n "$FAIR_ARGS" ]; then
-    python eval_fair.py $FAIR_ARGS \
+    python -m evaluation.eval_fair $FAIR_ARGS \
         --milano-grid data/milano_grid_corrected.npy \
         --method-time-scale toes:2.0 \
         --method-time-scale fmec_stein:7.94 \
         --method-time-scale fmec_sinkhorn:7.94 \
         --nfz-center $NFZ_C --nfz-radius $NFZ_R --mask-nfz-target \
         --out-dir ${ROOT}/fair_metrics
-    python plot_pareto.py \
+    python -m plotting.plot_pareto \
         --per-run ${ROOT}/fair_metrics/per_run.json \
         --out-dir ${ROOT}/fair_metrics
 fi

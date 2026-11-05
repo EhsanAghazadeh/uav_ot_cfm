@@ -33,7 +33,7 @@ run_cfg () {  # $1=ROOT  $2=TAG  $3=NFZ_FLAGS...
         OUT=results/appendix/scale_sweep/${TAG}_D${D}
         mkdir -p "$OUT"
         echo "=== ${TAG} domain=${D} m ==="
-        $PY eval_fair.py $ARGS \
+        $PY -m evaluation.eval_fair $ARGS \
             --milano-grid data/milano_grid_corrected.npy \
             --domain-size "$D" --time-scale 10.0 \
             --v-clip-realistic 30.0 \
@@ -44,7 +44,7 @@ run_cfg () {  # $1=ROOT  $2=TAG  $3=NFZ_FLAGS...
     # the same wattage as domain 200 with time-scale 10.
     OUT=results/appendix/scale_sweep/${TAG}_D2000_ts100
     mkdir -p "$OUT"
-    $PY eval_fair.py $ARGS \
+    $PY -m evaluation.eval_fair $ARGS \
         --milano-grid data/milano_grid_corrected.npy \
         --domain-size 2000 --time-scale 100.0 \
         --v-clip-realistic 30.0 \

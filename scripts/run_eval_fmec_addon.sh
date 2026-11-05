@@ -17,7 +17,7 @@ for m in "${METHODS[@]}"; do
     TRAJ="results/${m}_seed${s}/trajectory.npz"
     OUT="results/${m}_seed${s}/curves"
     if [[ -f "$TRAJ" ]]; then
-      python eval_prefix_stop.py --traj "$TRAJ" \
+      python -m evaluation.eval_prefix_stop --traj "$TRAJ" \
         --milano-grid data/milano_grid_corrected.npy \
         --smooth-sigma 1.5 --out-dir "$OUT"
     else

@@ -23,14 +23,14 @@ OUT_SINK="${OUT_SINK:-results/fmec_sinkhorn_seed${SEED}}"
 
 mkdir -p "$OUT_STEIN" "$OUT_SINK"
 
-python run_baseline_milano_v1.py --method fmec_stein \
+python -m experiments.milano.run_baseline_milano_v1 --method fmec_stein \
   --milano-grid "$GRID" --seed "$SEED" \
   --fmec-dt "$FMEC_DT" --fmec-tsteps "$FMEC_TSTEPS" \
   --fmec-num-iters "$STEIN_ITERS" --fmec-step-size "$STEIN_STEP" \
   --fmec-grad-subsample 2000 --fmec-metric-subsample 2000 \
   --out-dir "$OUT_STEIN"
 
-python run_baseline_milano_v1.py --method fmec_sinkhorn \
+python -m experiments.milano.run_baseline_milano_v1 --method fmec_sinkhorn \
   --milano-grid "$GRID" --seed "$SEED" \
   --fmec-dt "$FMEC_DT" --fmec-tsteps "$FMEC_TSTEPS" \
   --fmec-num-iters "$SINK_ITERS" --fmec-step-size "$SINK_STEP" \

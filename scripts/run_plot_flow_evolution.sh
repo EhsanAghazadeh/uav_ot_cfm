@@ -57,7 +57,7 @@ fi
 echo "[flow_evolution] task=$i  model_dir=$MD  out=$OUT"
 echo "                  nfz_flags='${NF}'"
 
-python plot_flow_evolution.py \
+python -m plotting.plot_flow_evolution \
     --model-dir "$MD" \
     --milano-grid data/milano_grid_corrected.npy \
     --smooth-sigma 1.5 \

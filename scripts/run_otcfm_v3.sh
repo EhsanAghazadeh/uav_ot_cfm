@@ -33,7 +33,7 @@ OUT=results/otcfm_v3_seed${SEED}
 
 echo "[otcfm_v3] seed=$SEED  out=$OUT"
 
-python run_otcfm_milano.py \
+python -m experiments.milano.run_otcfm_milano \
     --arch v3 --hidden-dim 256 --n-layers 12 \
     --n-time-freqs 16 --n-spatial-freqs 16 --sigma-x 5.0 \
     --ema-decay 0.999 \

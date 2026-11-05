@@ -54,7 +54,7 @@ for s in "${SEEDS[@]}"; do
         [ -f "$T" ] && ARGS="$ARGS --traj ${m}_seed${s}:${T}"
     done
     if [ -n "$ARGS" ]; then
-        python plot_all_methods.py $ARGS \
+        python -m plotting.plot_all_methods $ARGS \
             --milano-grid "$GRID" \
             $NFZ_DISCS \
             --out "${OUT_DIR}/trajectories_seed${s}.png"
@@ -70,7 +70,7 @@ for m in "${METHODS[@]}"; do
     done
 done
 if [ -n "$ARGS" ]; then
-    python plot_all_methods.py $ARGS \
+    python -m plotting.plot_all_methods $ARGS \
         --milano-grid "$GRID" \
         $NFZ_DISCS \
         --ncols 3 \

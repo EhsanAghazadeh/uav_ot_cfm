@@ -52,33 +52,33 @@ echo "[baselines_nfz_masked] task=$i  method=$M  seed=$S  out=$OUT"
 
 case "$M" in
     toes)
-        python run_baseline_milano.py --method toes \
+        python -m experiments.milano.run_baseline_milano --method toes \
             --t-total 1280 --n-knots 25600 --n-basis 50 --u-max 0.05 \
             --max-iter 30000 \
             $NFZ_FLAGS \
             --seed $S --out-dir $OUT
         ;;
     nonuniform_erg)
-        python run_baseline_milano.py --method nonuniform_erg \
+        python -m experiments.milano.run_baseline_milano --method nonuniform_erg \
             --num-intervals 64 --points-per-interval 200 --dt 0.01 \
             $NFZ_FLAGS \
             --seed $S --out-dir $OUT
         ;;
     opt_transport)
-        python run_baseline_milano.py --method opt_transport \
+        python -m experiments.milano.run_baseline_milano --method opt_transport \
             --num-points 25600 --dt 0.01 \
             $NFZ_FLAGS \
             --seed $S --out-dir $OUT
         ;;
     sac)
-        python run_baseline_milano.py --method sac \
+        python -m experiments.milano.run_baseline_milano --method sac \
             --num-points 25600 --sac-train-steps 500000 \
             --sac-grid-size 50 --sac-comm-range 0.18 --dt 0.01 \
             $NFZ_FLAGS \
             --seed $S --out-dir $OUT
         ;;
     fmec_stein)
-        python run_baseline_milano_v1.py --method fmec_stein \
+        python -m experiments.milano.run_baseline_milano_v1 --method fmec_stein \
             --fmec-dt 0.05 --fmec-tsteps 6400 \
             --fmec-num-iters 500 --fmec-step-size 0.01 \
             --fmec-num-samples 1000 --fmec-grad-subsample 2000 \
@@ -86,7 +86,7 @@ case "$M" in
             --seed $S --out-dir $OUT
         ;;
     fmec_sinkhorn)
-        python run_baseline_milano_v1.py --method fmec_sinkhorn \
+        python -m experiments.milano.run_baseline_milano_v1 --method fmec_sinkhorn \
             --fmec-dt 0.05 --fmec-tsteps 6400 \
             --fmec-num-iters 200 --fmec-step-size 0.005 \
             --fmec-num-samples 1000 --fmec-grad-subsample 2000 \
