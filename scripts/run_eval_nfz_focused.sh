@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=eval_nfz_focused
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%j_eval_nfz_focused.out
 #SBATCH --error=./slurm_output/%j_eval_nfz_focused.err
 #SBATCH --partition=cpu
@@ -36,16 +35,16 @@ module load python/3.11.7
 source .venv/bin/activate
 
 # ------------------- Edit these for each condition -------------------------
-NFZ_C="-0.6 -0.6"
-NFZ_R="0.10"
-OUT_TAG="nfz_low_density_neg0p6"      # subdir suffix; one per (NFZ_C, NFZ_R)
+NFZ_C="${NFZ_C:-0.19 0.03}"   # Table 1 single disc; override via env
+NFZ_R="${NFZ_R:-0.10}"
+OUT_TAG="${OUT_TAG:-nfz_single_disc}"  # subdir suffix; one per (NFZ_C, NFZ_R)
 METHODS=(
     nonuniform_erg_nfz_center_-0_6_-0_6
     # add baselines / OT-CFM variants trained against this same center:
     # opt_transport_nfz_center_-0_6_-0_6
     # toes_nfz_center_-0_6_-0_6
-    # otcfm_mask_only_nfz_center_-0_6_-0_6
-    # otcfm_mask_plus_penalty_nfz_center_-0_6_-0_6
+    otcfm_mask_only_nfz_center_0_6_0_6
+    otcfm_mask_plus_penalty_nfz_center_0_6_0_6
 )
 # ---------------------------------------------------------------------------
 

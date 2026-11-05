@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=sweep_fmec_milano
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%A_%a_sweep_fmec_milano.out
 #SBATCH --error=./slurm_output/%A_%a_sweep_fmec_milano.err
 #SBATCH --partition=cpu
@@ -9,7 +8,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=12:00:00
-#SBATCH --array=0-11
+#SBATCH --array=6-11
 #
 # FMEC Stein + Sinkhorn × {3 seeds} × {normal, NFZ-masked} = 12 tasks.
 # Outputs:
@@ -43,16 +42,16 @@ V=${VARIANTS[$((local_i % nv))]}
 S=${SEEDS[$((local_i / nv))]}
 
 FMEC_DT="${FMEC_DT:-0.05}"
-FMEC_TSTEPS="${FMEC_TSTEPS:-200}"
+FMEC_TSTEPS="${FMEC_TSTEPS:-6400}"
 STEIN_ITERS="${STEIN_ITERS:-500}"
-STEIN_STEP="${STEIN_STEP:-0.01}"
+STEIN_STEP="${STEIN_STEP:-0.32}"
 SINK_ITERS="${SINK_ITERS:-200}"
-SINK_STEP="${SINK_STEP:-0.005}"
+SINK_STEP="${SINK_STEP:-0.16}"
 
 NFZ_FLAGS=()
 if [[ "$M" == "1" ]]; then
-  NFZ_FLAGS=(--mask-nfz-target --nfz-center 0.19 0.03 --nfz-radius 0.10)
-  OUT="results_nfz_masked/${V}_seed${S}"
+  NFZ_FLAGS=(--mask-nfz-target --nfz-center 0.3 0.3 --nfz-radius 0.3)
+  OUT="results_nfz_masked_03_03/${V}_seed${S}"
   COND="masked"
 else
   OUT="results/${V}_seed${S}"
@@ -67,8 +66,8 @@ if [[ "$V" == "fmec_stein" ]]; then
     --milano-grid "$GRID" --seed "$S" \
     --fmec-dt "$FMEC_DT" --fmec-tsteps "$FMEC_TSTEPS" \
     --fmec-num-iters "$STEIN_ITERS" --fmec-step-size "$STEIN_STEP" \
-    --fmec-grad-subsample "${FMEC_GRAD_SUB:-2000}" \
-    --fmec-metric-subsample "${FMEC_METRIC_SUB:-2000}" \
+    --fmec-grad-subsample "${FMEC_GRAD_SUB:-0}" \
+    --fmec-metric-subsample "${FMEC_METRIC_SUB:-0}" \
     "${NFZ_FLAGS[@]}" \
     --out-dir "$OUT"
 else
@@ -76,8 +75,8 @@ else
     --milano-grid "$GRID" --seed "$S" \
     --fmec-dt "$FMEC_DT" --fmec-tsteps "$FMEC_TSTEPS" \
     --fmec-num-iters "$SINK_ITERS" --fmec-step-size "$SINK_STEP" \
-    --fmec-grad-subsample "${FMEC_GRAD_SUB:-2000}" \
-    --fmec-metric-subsample "${FMEC_METRIC_SUB:-2000}" \
+    --fmec-grad-subsample "${FMEC_GRAD_SUB:-0}" \
+    --fmec-metric-subsample "${FMEC_METRIC_SUB:-0}" \
     "${NFZ_FLAGS[@]}" \
     --out-dir "$OUT"
 fi

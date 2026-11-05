@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=otcfm_eval
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%j_otcfm_eval.out
 #SBATCH --error=./slurm_output/%j_otcfm_eval.err
 #SBATCH --partition=cpu

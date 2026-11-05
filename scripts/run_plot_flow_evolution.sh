@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=flow_evolution
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%A_%a_flow_evolution.out
 #SBATCH --error=./slurm_output/%A_%a_flow_evolution.err
 #SBATCH --partition=cpu
@@ -8,7 +7,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16GB
-#SBATCH --time=00:30:00
+#SBATCH --time=12:00:00
 #SBATCH --array=0-3
 
 # Renders the flow-matching evolution figure (latent annulus -> Milano)
@@ -34,9 +33,9 @@ source .venv/bin/activate
 # on every evolution panel).
 MODEL_DIRS=(
     "results/otcfm_seed42"
+    "results_nfz_masked/otcfm_mask_plus_penalty_seed42"
     "results/otcfm_nfz_l5_seed42"
     "results_nfz_masked/otcfm_mask_only_seed42"
-    "results_nfz_masked/otcfm_mask_plus_penalty_seed42"
 )
 NFZ_FLAGS=(
     ""
@@ -62,6 +61,7 @@ python plot_flow_evolution.py \
     --model-dir "$MD" \
     --milano-grid data/milano_grid_corrected.npy \
     --smooth-sigma 1.5 \
+    --n-cycles 2000 --pts-per-cycle 200 \
     --source uniform --n-particles 30000 \
     --n-frames 8 --n-steps 40 \
     --bins 160 --smooth-hist 1.5 \

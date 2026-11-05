@@ -95,7 +95,7 @@ def main():
                   help="2D histogram resolution per axis.")
     p.add_argument("--smooth-hist", type=float, default=1.5,
                   help="Gaussian smoothing sigma applied to the histogram.")
-    p.add_argument("--cmap", default="viridis",
+    p.add_argument("--cmap", default="Purples",
                   help="Colormap shared by evolution panels and target panel.")
     p.add_argument("--nfz-center", nargs=2, type=float, default=None,
                   metavar=("CX", "CY"),
@@ -105,8 +105,8 @@ def main():
                        "overlays the disc on every evolution panel.")
     p.add_argument("--nfz-radius", type=float, default=None,
                   help="No-fly disc radius (normalised).")
-    p.add_argument("--nfz-color", default="#ff2a2a",
-                  help="No-fly-zone overlay color (default bright red).")
+    p.add_argument("--nfz-color", default="#c40000",
+                  help="No-fly-zone border color.")
     p.add_argument("--target-title", default="Target",
                   help="Title shown above the target panel.")
     p.add_argument("--separator-color", default="#888888",
@@ -182,8 +182,21 @@ def main():
         ax.set_xticks([]); ax.set_yticks([])
         ax.set_aspect("equal")
         for sp in ax.spines.values():
-            sp.set_visible(False)
-        ax.set_title(title, fontsize=9, color="#222", pad=4)
+            sp.set_visible(True)
+            sp.set_color("#333")
+            sp.set_linewidth(0.8)
+        ax.set_title(title, fontsize=9, color="#222", pad=6)
+
+    def _add_nfz(ax):
+        # 1. Semi-transparent white to lighten the interior
+        ax.add_patch(plt.Circle(nfz_c, nfz_r, facecolor="white", alpha=0.6,
+                                edgecolor="none", zorder=3))
+        # 2. Light grey hatch
+        ax.add_patch(plt.Circle(nfz_c, nfz_r, facecolor="none",
+                                edgecolor="#cccccc", lw=0, hatch="////", zorder=4))
+        # 3. Dashed border 
+        ax.add_patch(plt.Circle(nfz_c, nfz_r, facecolor="none",
+                                edgecolor=args.nfz_color, lw=2.0, ls="--", zorder=5))
 
     # Evolution panels (s = 0 ... 1)
     for i, (snap, s) in enumerate(zip(snaps, s_vals)):
@@ -193,33 +206,37 @@ def main():
             range=[xlim, ylim])
         if args.smooth_hist > 0:
             H = gaussian_filter(H, sigma=args.smooth_hist)
-        ax.imshow(H.T, origin="lower", extent=(*xlim, *ylim),
-                  cmap=args.cmap, aspect="equal", interpolation="bilinear")
+        
+        # Apply the log density stretch from the reference script
+        H_max = H.max() if H.max() > 0 else 1.0
+        Pn = H / H_max
+        Pn = np.log1p(20.0 * Pn) / np.log1p(20.0)
+
+        ax.imshow(Pn.T, origin="lower", extent=(*xlim, *ylim),
+                  cmap=args.cmap, alpha=0.85, aspect="equal", interpolation="bilinear", zorder=1)
+        
         if nfz_on:
-            disc = plt.Circle(nfz_c, nfz_r,
-                              facecolor=args.nfz_color, alpha=0.18,
-                              edgecolor=args.nfz_color, linewidth=1.4,
-                              linestyle="--", zorder=5)
-            ax.add_patch(disc)
+            _add_nfz(ax)
         _style(ax, f"s = {s:.2f}")
 
     # Target panel (after s=1, same imshow style as the evolution panels)
     ax_t = axes[-1]
-    ax_t.imshow(target, origin="lower", extent=(*xlim, *ylim),
-                cmap=args.cmap, aspect="equal", interpolation="bilinear")
+    
+    # Apply the same log density stretch to the target panel
+    T_max = target.max() if target.max() > 0 else 1.0
+    Pn_t = target / T_max
+    Pn_t = np.log1p(20.0 * Pn_t) / np.log1p(20.0)
+
+    ax_t.imshow(Pn_t, origin="lower", extent=(*xlim, *ylim),
+                cmap=args.cmap, alpha=0.85, aspect="equal", interpolation="bilinear", zorder=1)
+    
     if nfz_on:
-        disc = plt.Circle(nfz_c, nfz_r,
-                          facecolor=args.nfz_color, alpha=0.18,
-                          edgecolor=args.nfz_color, linewidth=1.4,
-                          linestyle="--", zorder=5)
-        ax_t.add_patch(disc)
+        _add_nfz(ax_t)
     _style(ax_t, args.target_title)
 
     fig.tight_layout()
 
     # Vertical dotted separator between the s=1 panel and the target panel.
-    # We compute the midpoint between the two axes in figure coordinates
-    # *after* tight_layout has laid them out.
     last_evo_pos = axes[-2].get_position()
     target_pos = axes[-1].get_position()
     sep_x = 0.5 * (last_evo_pos.x1 + target_pos.x0)

@@ -1,14 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=nonuniform_erg_method
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
-#SBATCH --output=./slurm_output/%j_nonuniform_erg.out
-#SBATCH --error=./slurm_output/%j_nonuniform_erg.err
+#SBATCH --job-name=nonuniform_erg_nfz_center_0_3_0_3   
+#SBATCH --output=./slurm_output/%j_nonuniform_erg_nfz_center_0_3_0_3.out
+#SBATCH --error=./slurm_output/%j_nonuniform_erg_nfz_center_0_3_0_3.err
 #SBATCH --partition=cpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --array=0-2
 
 set -euo pipefail
@@ -20,8 +19,9 @@ source .venv/bin/activate
 
 SEEDS=(21 42 63)
 SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
-OUT=results/nonuniform_erg_seed${SEED}
+OUT=results_nfz_masked/nonuniform_erg_nfz_center_0_3_0_3_seed${SEED}
 
 python run_baseline_milano.py --method nonuniform_erg \
-    --num-intervals 64 --points-per-interval 200 --dt 0.1 \
+    --num-intervals 64 --points-per-interval 200 --dt 0.01 \
+    --nfz-center 0.3 0.3 --nfz-radius 0.3 --mask-nfz-target \
     --seed $SEED --out-dir $OUT

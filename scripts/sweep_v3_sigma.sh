@@ -1,15 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=sweep_v3_sigma
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
-#SBATCH --output=./slurm_output/%A_%a_sweep_v3_sigma.out
-#SBATCH --error=./slurm_output/%A_%a_sweep_v3_sigma.err
-#SBATCH --partition=gpu
+#SBATCH --job-name=sweep_v3_sigma_le1e-2
+#SBATCH --output=./slurm_output/%A_%a_sweep_v3_sigma_le1e-2.out
+#SBATCH --error=./slurm_output/%A_%a_sweep_v3_sigma_le1e-2.err
+#SBATCH --partition=gpu-preempt
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
-#SBATCH --time=03:00:00
+#SBATCH --time=06:00:00
 #SBATCH --array=0-4
 
 # v3 RFF bandwidth sweep on a single seed (42).
@@ -33,7 +32,7 @@ SIGMAS=(1.0 2.0 5.0 10.0 20.0)
 SIGMA=${SIGMAS[$SLURM_ARRAY_TASK_ID]}
 
 SEED=42
-OUT=results/sweep_v3_sigma/sigma${SIGMA}_seed${SEED}
+OUT=results/sweep_v3_sigma/sigma${SIGMA}_seed${SEED}_le1e-2
 mkdir -p "$(dirname "$OUT")"
 echo "[sweep_v3_sigma] task=$SLURM_ARRAY_TASK_ID  sigma_x=$SIGMA  out=$OUT"
 
@@ -43,4 +42,6 @@ python run_otcfm_milano.py \
     --ema-decay 0.999 \
     --epochs 3000 --batch-size 2048 \
     --n-cycles 128 --pts-per-cycle 200 --transport-steps 30 \
+    --energy-lambda 1e-2 --energy-chunk-size 64 --energy-steps 8 \
+    --energy-n-cycles 50 --energy-pts-per-cycle 200 \
     --seed $SEED --out-dir $OUT

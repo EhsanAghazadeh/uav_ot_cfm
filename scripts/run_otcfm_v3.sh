@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=otcfm_v3_train
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%A_%a_otcfm_v3_train.out
 #SBATCH --error=./slurm_output/%A_%a_otcfm_v3_train.err
 #SBATCH --partition=gpu

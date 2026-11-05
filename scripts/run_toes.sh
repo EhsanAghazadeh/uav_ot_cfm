@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=toes_method
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%j_toes_method.out
 #SBATCH --error=./slurm_output/%j_toes_method.err
 #SBATCH --partition=cpu

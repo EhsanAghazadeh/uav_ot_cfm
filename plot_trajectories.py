@@ -6,7 +6,7 @@ the trajectory overlaid (start point in black).
 """
 from __future__ import annotations
 
-import argparse, os
+import argparse, os, re
 import numpy as np
 import matplotlib
 
@@ -16,6 +16,12 @@ from scipy.interpolate import RegularGridInterpolator
 from scipy.ndimage import gaussian_filter
 
 from fair_comparison import TrajectoryRecord
+from method_style import color as _method_color
+
+
+def _method_tag_for_color(label: str) -> str:
+    """Strip trailing _seedNN so multi-seed runs share one palette color."""
+    return re.sub(r"_seed\d+$", "", label)
 
 
 class Target:
@@ -43,7 +49,7 @@ def _as_batched(traj):
 
 
 def plot_trajectory(target, traj, x0, out_path, title="", max_points=8000,
-                    nofly=None):
+                    nofly=None, method_tag=None):
     nx, ny = 160, 160
     X, Y = np.meshgrid(np.linspace(*target.xlim, nx),
                        np.linspace(*target.ylim, ny))
@@ -85,7 +91,10 @@ def plot_trajectory(target, traj, x0, out_path, title="", max_points=8000,
         marker_alpha = 0.5
 
     for i in range(n_agents):
-        c = cmap(i % cmap.N) if n_agents > 1 else "C1"
+        if n_agents > 1:
+            c = cmap(i % cmap.N)
+        else:
+            c = (_method_color(method_tag) if method_tag is not None else "C1")
         ax.plot(traj_b[i, idx, 0], traj_b[i, idx, 1], "-", color=c, lw=lw,
                 alpha=line_alpha)
         ax.plot(traj_b[i, idx, 0], traj_b[i, idx, 1], "o", color=c, ms=ms,
@@ -137,7 +146,8 @@ def main():
         plot_trajectory(target, rec.pos, rec.pos[0], out_path,
                        title=f"{label}  (N={len(rec.pos)})",
                        max_points=args.max_points,
-                       nofly=tuple(args.nofly) if args.nofly else None)
+                       nofly=tuple(args.nofly) if args.nofly else None,
+                       method_tag=_method_tag_for_color(label))
         print(f"saved {out_path}")
 
 

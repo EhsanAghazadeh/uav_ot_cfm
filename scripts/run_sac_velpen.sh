@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=sac_velpen_train
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%A_%a_sac_velpen_train.out
 #SBATCH --error=./slurm_output/%A_%a_sac_velpen_train.err
 #SBATCH --partition=cpu

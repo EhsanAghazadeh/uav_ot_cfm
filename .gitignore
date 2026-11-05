@@ -8,9 +8,28 @@ __pycache__/
 
 # experiment outputs (rebuilt by running the pipeline)
 results/
+results_*/
+results-*/
+temp_trajectories/
+slurm_output/
+logs/
+
+# papers, notes and local tooling (not part of the code release)
+*.pdf
+current.md
+.claude/
+
+# local-only scripts kept out of the release
+#   superseded Experiment 3 variants (origin NFZ, r = 0.3)
+code_synthetic/experiment_03_constraints.py
+code_synthetic/experiment_03_revised.py
+code_synthetic/run_exp3_*.py
+code_synthetic/run_rebuttal_variants.py
+#   protocol reconstruction used during review
+train_synth_exp23.py
+scripts/rebuttal_*.sh
 
 # macOS / editor cruft
 .DS_Store
 .idea/
 .vscode/
-slurm_output/

@@ -3,7 +3,7 @@
 # Run on the head node (or any login node), NOT inside an sbatch job.
 #
 # Usage:
-#   cd /work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
+#   cd uav_ot_cfm   (repo root)
 #   bash scripts/install_env.sh
 
 set -euo pipefail

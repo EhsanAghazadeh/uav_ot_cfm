@@ -1,10 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=otcfm_nfz_mask_vel_lv0p1_center_0_3_0_3
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
-#SBATCH --output=./slurm_output/%A_%a_otcfm_nfz_mask_vel_lv0p1_center_0_3_0_3.out
-#SBATCH --error=./slurm_output/%A_%a_otcfm_nfz_mask_vel_lv0p1_center_0_3_0_3.err
+#SBATCH --job-name=otcfm_nfz_mask_vel_lv0p1_nfz_l10_center_0_3_0_3
+#SBATCH --output=./slurm_output/%A_%a_otcfm_nfz_mask_vel_lv0p1_nfz_l10_center_0_3_0_3.out
+#SBATCH --error=./slurm_output/%A_%a_otcfm_nfz_mask_vel_lv0p1_nfz_l10_center_0_3_0_3.err
 #SBATCH --partition=gpu-preempt
-#SBATCH --gres=gpu:2080ti:1
+#SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
@@ -26,7 +25,7 @@ source .venv/bin/activate
 
 SEEDS=(21 42 63)
 SEED=${SEEDS[$SLURM_ARRAY_TASK_ID]}
-OUT=results_nfz_masked/otcfm_mask_vel_lv0p1_center_0_3_0_3_seed${SEED}
+OUT=results_nfz_masked/otcfm_mask_vel_lv0p1_nfz_l10_center_0_3_0_3_seed${SEED}
 
 echo "[otcfm_nfz_mask_vel] seed=$SEED  out=$OUT"
 
@@ -38,5 +37,6 @@ python run_otcfm_milano.py \
     --vel-lambda 0.1 --energy-chunk-size 64 --energy-steps 8 \
     --energy-n-cycles 50 --energy-pts-per-cycle 200 \
     --domain-size 8 \
-    --reuse-model-from results_nfz_masked/otcfm_mask_vel_lv0p1_center_0_3_0_3_seed${SEED}/model.pt \
+    --nfz-lambda 10 --nfz-steps 8 \
+    --reuse-model-from results_nfz_masked/otcfm_mask_vel_lv0p1_nfz_l10_center_0_3_0_3_seed${SEED}/model.pt \
     --seed $SEED --out-dir $OUT

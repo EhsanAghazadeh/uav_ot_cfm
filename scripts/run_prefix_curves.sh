@@ -1,7 +1,5 @@
 #!/bin/bash
-#SBATCH --qos=short
 #SBATCH --job-name=prefix_curves_nfz_center_0_3_0_3
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%j_prefix_curves_nfz_center_0_3_0_3.out
 #SBATCH --error=./slurm_output/%j_prefix_curves_nfz_center_0_3_0_3.err
 #SBATCH --partition=cpu
@@ -25,31 +23,27 @@ SEEDS=(21 42 63)
 
 # ── NFZ configuration ─────────────────────────────────────────────────────────
 # Single disc:
-#   NFZ_FLAGS="--nfz 0.19 0.03 0.10"
+# NFZ_FLAGS="--nfz 0.19 0.03 0.10"
 #
 # Multiple discs (repeat --nfz once per disc: cx cy r):
-#   NFZ_FLAGS="--nfz 0.5 0.0 0.2 --nfz -0.5 0.0 0.2 --nfz 0.0 0.5 0.2 --nfz 0.0 -0.5 0.2"
+# NFZ_FLAGS="--nfz 0.5 0.0 0.2 --nfz -0.5 0.0 0.2 --nfz 0.0 0.5 0.2 --nfz 0.0 -0.5 0.2"
 #
-NFZ_FLAGS="--nfz 0.19 0.03 0.10"
+NFZ_FLAGS="--nfz 0.3 0.3 0.3"
 # ─────────────────────────────────────────────────────────────────────────────
 
-ROOT_M=results_nfz_masked
+ROOT_M=results_nfz_masked_multi_disc
 # METHODS_M=(toes nonuniform_erg opt_transport sac
 #            fmec_stein fmec_sinkhorn
 #            otcfm_mask_only otcfm_mask_plus_penalty)
 
-METHODS_M=(
-    nonuniform_erg_nfz_center_0_3_0_3
-    # add baselines / OT-CFM variants trained against this same center:
-    # opt_transport_nfz_center_0_3_0_3
-    # toes_nfz_center_-0_6_-0_6
-    otcfm_mask_vel_lv0p1_nfz_l10_center_0_3_0_3
-    otcfm_mask_vel_lv0p1_center_0_3_0_3
-    otcfm_mask_only_la1e-2_center_0_3_0_3
-    otcfm_mask_plus_penalty_la10_le1_center_0_3_0_3
-    otcfm_mask_only_center_0_3_0_3_radius_0_3
-    otcfm_mask_plus_penalty_center_0_3_0_3_radius_0_3 
-)
+METHODS_M=(toes nonuniform_erg opt_transport sac
+         fmec_stein fmec_sinkhorn
+         otcfm
+         otcfm_nfz_l5
+         otcfm_energy_lambda1e-2
+         otcfm_energy_la1e-4
+         otcfm_energy_lambda1e-3_nfz_l500
+         otcfm_energy_la1e-1_nfz_l500_le1e-3)
 
 _ts() { case "$1" in toes*) echo "2.0";; fmec_stein*|fmec_sinkhorn*) echo "7.94";; *) echo "10.0";; esac; }
 
@@ -84,6 +78,6 @@ for m in "${METHODS_M[@]}"; do
     done
 done
 [ -n "$CURVE_ARGS" ] && python plot_curves.py $CURVE_ARGS \
-    --out-dir "${ROOT_M}/comparison_all_seeds_center_0_3_0_3_radius_0_3"
+    --out-dir "${ROOT_M}/comparison_all_seeds"
 
-echo "prefix_curves complete -> ${ROOT_M}/comparison_all_seeds_center_0_3_0_3_radius_0_3/"
+echo "prefix_curves complete -> ${ROOT_M}/comparison_all_seeds/"

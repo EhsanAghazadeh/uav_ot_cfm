@@ -1,16 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=sweep_energy
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
-#SBATCH --output=./slurm_output/%A_%a_sweep_energy.out
-#SBATCH --error=./slurm_output/%A_%a_sweep_energy.err
-#SBATCH --partition=gpu
+#SBATCH --job-name=sweep_energy_1_10_100_1000
+#SBATCH --output=./slurm_output/%A_%a_sweep_energy_1_10_100_1000.out
+#SBATCH --error=./slurm_output/%A_%a_sweep_energy_1_10_100_1000.err
+#SBATCH --partition=gpu-preempt
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH --time=02:00:00
-#SBATCH --array=0-4
+#SBATCH --array=0-3
 
 # Combo 2:  L_total = L_cfm + lambda_energy * R_energy   (Zeng power)
 # Sweep lambda_energy across 5 log-spaced values around the prior default (1e-4).
@@ -22,7 +21,7 @@ module purge
 module load python/3.11.7
 source .venv/bin/activate
 
-LAMBDAS=(1e-6 1e-5 1e-4 1e-3 1e-2)
+LAMBDAS=(1 10 100 1000)
 LE=${LAMBDAS[$SLURM_ARRAY_TASK_ID]}
 
 SEED=42

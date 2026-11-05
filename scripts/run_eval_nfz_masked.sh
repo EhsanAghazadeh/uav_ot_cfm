@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=eval_nfz_masked
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%j_eval_nfz_masked.out
 #SBATCH --error=./slurm_output/%j_eval_nfz_masked.err
 #SBATCH --partition=cpu

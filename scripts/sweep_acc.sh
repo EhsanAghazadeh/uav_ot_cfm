@@ -1,15 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=sweep_acc
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%A_%a_sweep_acc.out
 #SBATCH --error=./slurm_output/%A_%a_sweep_acc.err
-#SBATCH --partition=gpu
+#SBATCH --partition=gpu-preempt
 #SBATCH --gres=gpu:1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
-#SBATCH --time=02:00:00
+#SBATCH --time=03:00:00
 #SBATCH --array=0-4
 
 # Combo 3:  L_total = L_cfm + lambda_acc * R_acc   (Hessian-Frobenius proxy)

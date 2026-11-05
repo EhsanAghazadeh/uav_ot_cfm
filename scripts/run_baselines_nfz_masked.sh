@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --job-name=baselines_nfz_masked
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%A_%a_baselines_nfz_masked.out
 #SBATCH --error=./slurm_output/%A_%a_baselines_nfz_masked.err
 #SBATCH --partition=cpu
@@ -35,18 +34,19 @@ SEEDS=(21 42 63)
 i=$SLURM_ARRAY_TASK_ID
 M=${METHODS[$((i / 3))]}
 S=${SEEDS[$((i % 3))]}
-OUT=results_nfz_masked_03_03/${M}_seed${S}
-
-# Set NFZ_FLAGS below, then sbatch this script.
-#
-# Single disc:
-#   NFZ_FLAGS="--nfz 0.19 0.03 0.10 --mask-nfz-target"
-#
-# Multiple discs (repeat --nfz once per disc: cx cy r):
-#   NFZ_FLAGS="--nfz 0.5 0.0 0.2 --nfz -0.5 0.0 0.2 --nfz 0.0 0.5 0.2 --nfz 0.0 -0.5 0.2 --mask-nfz-target"
-#
-# Active config:
-NFZ_FLAGS="--nfz 0.3 0.3 0.3 --mask-nfz-target"
+# NFZ configuration of Table 1, chosen with CONFIG (default: 1d):
+#   CONFIG=1d sbatch scripts/run_baselines_nfz_masked.sh   # single disc
+#   CONFIG=md sbatch scripts/run_baselines_nfz_masked.sh   # four discs
+CONFIG=${CONFIG:-1d}
+if [ "$CONFIG" = "1d" ]; then
+    ROOT=results_nfz_masked
+    NFZ_FLAGS="--nfz 0.19 0.03 0.10 --mask-nfz-target"
+else
+    ROOT=results_nfz_masked_multi_disc
+    # repeat --nfz once per disc: cx cy r
+    NFZ_FLAGS="--nfz 0.5 0.0 0.2 --nfz -0.5 0.0 0.2 --nfz 0.0 0.5 0.2 --nfz 0.0 -0.5 0.2 --mask-nfz-target"
+fi
+OUT=${ROOT}/${M}_seed${S}
 
 echo "[baselines_nfz_masked] task=$i  method=$M  seed=$S  out=$OUT"
 

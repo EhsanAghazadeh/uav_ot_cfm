@@ -1,7 +1,5 @@
 #!/bin/bash
-#SBATCH --qos=short
 #SBATCH --job-name=post_eval
-#SBATCH --chdir=/work/pi_aghasemi_umass_edu/eaghazadeh/uav_ot_cfm
 #SBATCH --output=./slurm_output/%j_post_eval.out
 #SBATCH --error=./slurm_output/%j_post_eval.err
 #SBATCH --partition=cpu
@@ -46,21 +44,23 @@ TIME_SCALE=10.0      # multiplies native trajectory times
 V_CAP_REALISTIC=30.0 # typical rotorcraft max cruise (m/s); reveals teleport
 SEEDS=(21 42 63)
 
-# ── NFZ configuration ─────────────────────────────────────────────────────────
-# Single disc:
-#   NFZ_FLAGS="--nfz 0.19 0.03 0.10"
-#
-# Multiple discs (repeat --nfz once per disc: cx cy r):
-#   NFZ_FLAGS="--nfz 0.5 0.0 0.2 --nfz -0.5 0.0 0.2 --nfz 0.0 0.5 0.2 --nfz 0.0 -0.5 0.2"
-#
-NFZ_FLAGS="--nfz 0.19 0.03 0.10"
+# ── NFZ configuration (Table 1): CONFIG=1d (default) or CONFIG=md ─────────────
+CONFIG=${CONFIG:-1d}
+if [ "$CONFIG" = "1d" ]; then
+    NFZ_FLAGS="--nfz 0.19 0.03 0.10"
+    CFG_ROOT=results_nfz_masked
+else
+    # repeat --nfz once per disc: cx cy r
+    NFZ_FLAGS="--nfz 0.5 0.0 0.2 --nfz -0.5 0.0 0.2 --nfz 0.0 0.5 0.2 --nfz 0.0 -0.5 0.2"
+    CFG_ROOT=results_nfz_masked_multi_disc
+fi
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 # ---------------------------------------------------------------------------
 # Block A.1 -- unmasked: fair eval on rescaled UAV-mission protocol
 # ---------------------------------------------------------------------------
-ROOT=results_nfz_masked
+ROOT=${CFG_ROOT}
 METHODS=(toes nonuniform_erg opt_transport sac
          fmec_stein fmec_sinkhorn
          otcfm
@@ -98,7 +98,7 @@ METHODS=(toes nonuniform_erg opt_transport sac
 # ---------------------------------------------------------------------------
 # Block A.2 -- masked: fair eval on rescaled UAV-mission protocol
 # ---------------------------------------------------------------------------
-ROOT_M=results_nfz_masked
+ROOT_M=${CFG_ROOT}
 METHODS_M=(toes nonuniform_erg opt_transport sac
          fmec_stein fmec_sinkhorn
          otcfm
@@ -136,40 +136,40 @@ fi
 # ---------------------------------------------------------------------------
 # Block B -- multi-agent ablation (trained vanilla OT-CFM, seed 42)
 # ---------------------------------------------------------------------------
-# MA_MODEL="results/otcfm_seed42"
-# if [ -f "${MA_MODEL}/model.pt" ] && [ -f "${MA_MODEL}/plan_meta.json" ]; then
-#     echo "=== Block B: multi-agent ablation ==="
-#     python eval_multi_agent.py \
-#         --model-dir "$MA_MODEL" \
-#         --milano-grid "$GRID" \
-#         --fleet-sizes 1 2 5 10 20 \
-#         --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
-#         --out-dir results/multi_agent
-# else
-#     echo "=== Block B: skipping (no $MA_MODEL/model.pt) ==="
-# fi
+MA_MODEL="${ROOT_M}/otcfm_seed42"
+if [ -f "${MA_MODEL}/model.pt" ] && [ -f "${MA_MODEL}/plan_meta.json" ]; then
+    echo "=== Block B: multi-agent ablation ==="
+    python eval_multi_agent.py \
+        --model-dir "$MA_MODEL" \
+        --milano-grid "$GRID" \
+        --fleet-sizes 1 2 5 10 20 \
+        --domain-size $DOMAIN_M --time-scale $TIME_SCALE \
+        --out-dir "${ROOT_M}/multi_agent"
+else
+    echo "=== Block B: skipping (no $MA_MODEL/model.pt) ==="
+fi
 
 
 # ---------------------------------------------------------------------------
 # Block C -- amortization wall-clock table
 # ---------------------------------------------------------------------------
-# echo "=== Block C: amortization + sampling-protocol tables ==="
-# python eval_amortization.py \
-#     --root results \
-#     --out results/fair_metrics_rescaled/amortization.tex
-# if [ -f "results/fair_metrics_rescaled/per_run.json" ]; then
-#     python eval_sampling_table.py \
-#         --per-run results/fair_metrics_rescaled/per_run.json \
-#         --root results \
-#         --out results/fair_metrics_rescaled/sampling_protocol.tex
-# fi
-# if [ -f "results_nfz_masked/fair_metrics_rescaled/per_run.json" ]; then
-#     python eval_sampling_table.py \
-#         --per-run results_nfz_masked/fair_metrics_rescaled/per_run.json \
-#         --root results_nfz_masked \
-#         --label tab:sampling_nfz_masked \
-#         --out results_nfz_masked/fair_metrics_rescaled/sampling_protocol.tex
-# fi
+echo "=== Block C: amortization + sampling-protocol tables ==="
+python eval_amortization.py \
+    --root "${ROOT_M}" \
+    --out "${ROOT_M}/fair_metrics_rescaled/amortization.tex"
+if [ -f "${ROOT_M}/fair_metrics_rescaled/per_run.json" ]; then
+    python eval_sampling_table.py \
+        --per-run "${ROOT_M}/fair_metrics_rescaled/per_run.json" \
+        --root "${ROOT_M}" \
+        --out "${ROOT_M}/fair_metrics_rescaled/sampling_protocol.tex"
+fi
+if [ -f "${ROOT_M}/fair_metrics_rescaled/per_run.json" ]; then
+    python eval_sampling_table.py \
+        --per-run "${ROOT_M}/fair_metrics_rescaled/per_run.json" \
+        --root "${ROOT_M}" \
+        --label tab:sampling_nfz_masked \
+        --out "${ROOT_M}/fair_metrics_rescaled/sampling_protocol.tex"
+fi
 
 
 # ---------------------------------------------------------------------------
