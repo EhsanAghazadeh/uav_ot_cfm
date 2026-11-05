@@ -4,8 +4,7 @@
 University of Massachusetts Amherst · **NeurIPS 2026**
 
 [**Project page**](https://ehsanaghazadeh.github.io/ergodic-pushforward/) ·
-[**Paper (arXiv)**](https://arxiv.org/abs/XXXX.XXXXX) ·
-[**NeurIPS proceedings**](#) <!-- replace with the official link once available -->
+[**Paper (arXiv)**](https://arxiv.org/abs/2605.13063)
 
 <p align="center">
   <img src="assets/flow_otcfm.gif" width="560"
@@ -140,7 +139,9 @@ Data* 2015). Preprocessing is described in the paper appendix
   title     = {Ergodic Trajectory Design by Learned Pushforward Maps: Provable Coverage via Conditional Flow Matching},
   author    = {Aghazadeh, Ehsan and Malekzadeh, Masoud and Ghasemi, Ahmad and Pishro-Nik, Hossein},
   booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
-  year      = {2026}
+  year      = {2026},
+  eprint    = {2605.13063},
+  archivePrefix = {arXiv}
 }
 ```
 
