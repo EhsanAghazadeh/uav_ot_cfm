@@ -1,1 +1,1 @@
-"""Ergodic trajectory design by learned pushforward maps (OT-CFM)."""
+"""Ergodic trajectory design via conditional flow matching (OT-CFM)."""

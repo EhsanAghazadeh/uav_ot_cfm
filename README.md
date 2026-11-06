@@ -1,4 +1,4 @@
-# Ergodic Trajectory Design by Learned Pushforward Maps: Provable Coverage via Conditional Flow Matching
+# Ergodic Trajectory Design via Conditional Flow Matching
 
 **Ehsan Aghazadeh, Masoud Malekzadeh, Ahmad Ghasemi, Hossein Pishro-Nik**
 University of Massachusetts Amherst · **NeurIPS 2026**
@@ -136,7 +136,7 @@ Data* 2015). Preprocessing is described in the paper appendix
 
 ```bibtex
 @inproceedings{aghazadeh2026ergodic,
-  title     = {Ergodic Trajectory Design by Learned Pushforward Maps: Provable Coverage via Conditional Flow Matching},
+  title     = {Ergodic Trajectory Design via Conditional Flow Matching},
   author    = {Aghazadeh, Ehsan and Malekzadeh, Masoud and Ghasemi, Ahmad and Pishro-Nik, Hossein},
   booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
   year      = {2026},
@@ -152,3 +152,8 @@ The TOES baseline uses the upstream
 package (included as a git submodule). FMEC baselines follow
 Sun et al. (2025) and use [lqrax](https://pypi.org/project/lqrax/) and
 [ott-jax](https://github.com/ott-jax/ott).
+
+## License
+
+Released under the [MIT License](LICENSE). The TOES submodule
+(`time_optimal_ergodic_search`) is third-party code under its own license.
